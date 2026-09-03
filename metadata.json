@@ -1,0 +1,10 @@
+{
+  "name": "Client Care",
+  "description": "AI-powered customer care, sales, calling and business automation platform by Pramanik Group.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
