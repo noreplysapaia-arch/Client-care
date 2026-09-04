@@ -3,19 +3,12 @@ import {
   Phone,
   PhoneCall,
   Search,
-  Filter,
-  Play,
-  Pause,
   Clock,
   Sparkles,
-  ArrowRight,
-  CheckCircle2,
-  Calendar,
   X,
   Volume2,
   FileText,
-  User,
-  ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 import { AICall } from '../../types';
 import { Badge } from '../ui/Badge';
@@ -26,6 +19,7 @@ interface AICallsPageProps {
   selectedCall: AICall | null;
   onSelectCall: (call: AICall | null) => void;
   onOpenVoiceDemo: () => void;
+  onDeleteCall?: (callId: string) => void;
 }
 
 export const AICallsPage: React.FC<AICallsPageProps> = ({
@@ -33,11 +27,10 @@ export const AICallsPage: React.FC<AICallsPageProps> = ({
   selectedCall,
   onSelectCall,
   onOpenVoiceDemo,
+  onDeleteCall,
 }) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterSentiment, setFilterSentiment] = useState<string>('all');
-  const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
-  const [audioProgress, setAudioProgress] = useState<number>(35);
 
   const filteredCalls = calls.filter((c) => {
     const matchesSearch =
@@ -62,11 +55,11 @@ export const AICallsPage: React.FC<AICallsPageProps> = ({
               AI Call Intelligence
             </h1>
             <Badge variant="cyan" size="md">
-              {calls.length} Phone Sessions
+              {calls.length} Real-Time Call Logs
             </Badge>
           </div>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Verbatim transcripts, audio playbacks, automated lead scoring, and structured next actions.
+            Verbatim transcripts, audio playbacks, automated lead scoring, and real-time Firestore synchronization.
           </p>
         </div>
 
@@ -76,7 +69,7 @@ export const AICallsPage: React.FC<AICallsPageProps> = ({
           onClick={onOpenVoiceDemo}
           icon={PhoneCall}
         >
-          Make Test Phone Call
+          Make Live Phone Call
         </Button>
       </div>
 
@@ -104,22 +97,22 @@ export const AICallsPage: React.FC<AICallsPageProps> = ({
                   : 'bg-white/[0.04] text-slate-400 hover:text-white hover:bg-white/[0.08]'
               }`}
             >
-              {s === 'all' ? 'All Sentiment' : s}
+              {s === 'all' ? 'All Sentiments' : `${s} Sentiment`}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Calls Table */}
+      {/* CALL LOGS TABLE */}
       <div className="card-surface rounded-2xl border border-white/[0.08] overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-[#05070E] border-b border-white/[0.06] text-[11px] font-bold text-slate-400 uppercase tracking-wider">
               <tr>
-                <th className="py-3.5 px-4">Customer & Company</th>
+                <th className="py-3.5 px-4">Caller & Organization</th>
                 <th className="py-3.5 px-4">AI Employee</th>
+                <th className="py-3.5 px-4">Intent Summary</th>
                 <th className="py-3.5 px-4">Duration</th>
-                <th className="py-3.5 px-4">Intent & Score</th>
                 <th className="py-3.5 px-4">Sentiment</th>
                 <th className="py-3.5 px-4">Time</th>
                 <th className="py-3.5 px-4 text-right">Actions</th>
@@ -130,30 +123,21 @@ export const AICallsPage: React.FC<AICallsPageProps> = ({
                 <tr
                   key={call.id}
                   onClick={() => onSelectCall(call)}
-                  className="hover:bg-white/[0.03] cursor-pointer transition-colors group"
+                  className="hover:bg-white/[0.02] transition-colors cursor-pointer"
                 >
                   <td className="py-3.5 px-4">
-                    <div className="font-bold text-white group-hover:text-blue-300 transition-colors">
-                      {call.customerName}
-                    </div>
-                    <div className="text-[11px] text-slate-400">
-                      {call.customerCompany} • {call.customerPhone}
-                    </div>
+                    <div className="font-bold text-white">{call.customerName}</div>
+                    <div className="text-[11px] text-slate-400">{call.customerCompany}</div>
                   </td>
                   <td className="py-3.5 px-4">
-                    <div className="font-medium text-slate-200">{call.aiEmployeeName}</div>
-                    <div className="text-[10px] text-slate-500">{call.aiEmployeeRole}</div>
+                    <span className="font-semibold text-slate-200">{call.aiEmployeeName}</span>
+                    <span className="block text-[10px] text-slate-500">{call.aiEmployeeRole}</span>
                   </td>
-                  <td className="py-3.5 px-4 font-mono text-slate-300">
+                  <td className="py-3.5 px-4 text-slate-300 max-w-[260px] truncate" title={call.intent}>
+                    {call.intent}
+                  </td>
+                  <td className="py-3.5 px-4 font-mono text-slate-400 whitespace-nowrap">
                     {call.duration}
-                  </td>
-                  <td className="py-3.5 px-4">
-                    <div className="font-semibold text-slate-200 truncate max-w-[200px]">
-                      {call.intent}
-                    </div>
-                    <span className="text-[10px] text-blue-400 font-bold">
-                      Score: {call.leadScore}/100
-                    </span>
                   </td>
                   <td className="py-3.5 px-4">
                     <Badge
@@ -173,15 +157,27 @@ export const AICallsPage: React.FC<AICallsPageProps> = ({
                     {call.timestamp}
                   </td>
                   <td className="py-3.5 px-4 text-right">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectCall(call);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 text-xs font-semibold border border-blue-500/20 transition-colors"
-                    >
-                      Inspect
-                    </button>
+                    <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => onSelectCall(call)}
+                        className="px-2.5 py-1 rounded-lg bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 text-xs font-semibold border border-blue-500/20 transition-colors"
+                      >
+                        Inspect
+                      </button>
+                      {onDeleteCall && (
+                        <button
+                          onClick={() => {
+                            if (confirm(`Delete call log for ${call.customerName}?`)) {
+                              onDeleteCall(call.id);
+                            }
+                          }}
+                          className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                          title="Delete from Firestore"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -224,100 +220,36 @@ export const AICallsPage: React.FC<AICallsPageProps> = ({
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <Volume2 className="w-4 h-4 text-cyan-400" />
-                    <span className="font-semibold text-white">Call Audio Recording</span>
-                    <Badge variant="cyan" size="sm">HD Telecom Audio</Badge>
+                    <span className="font-semibold text-white">Call Audio Telemetry</span>
+                    <Badge variant="cyan" size="sm">HD WebRTC Audio</Badge>
                   </div>
                   <span className="font-mono text-slate-400">{selectedCall.duration}</span>
                 </div>
-
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setIsPlayingAudio(!isPlayingAudio)}
-                    className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30 transition-all"
-                  >
-                    {isPlayingAudio ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                  </button>
-                  <div
-                    className="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden cursor-pointer relative"
-                    onClick={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const pos = (e.clientX - rect.left) / rect.width;
-                      setAudioProgress(Math.floor(pos * 100));
-                    }}
-                  >
-                    <div
-                      className="bg-gradient-to-r from-blue-500 to-cyan-400 h-full rounded-full transition-all"
-                      style={{ width: `${audioProgress}%` }}
-                    />
-                  </div>
+                <div className="w-full bg-white/[0.06] h-1.5 rounded-full overflow-hidden">
+                  <div className="bg-gradient-to-r from-blue-500 to-cyan-400 h-full w-[45%]" />
                 </div>
               </div>
 
-              {/* Intelligence Summary & Intent */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
-                    Customer Intent
-                  </span>
-                  <span className="text-xs font-semibold text-white">
-                    {selectedCall.intent}
-                  </span>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
-                    Lead Score
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-base font-extrabold text-cyan-400">
-                      {selectedCall.leadScore}
-                    </span>
-                    <span className="text-xs text-slate-500">/ 100</span>
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
-                    Sentiment
-                  </span>
-                  <Badge
-                    variant={
-                      selectedCall.sentiment === 'positive' ? 'emerald' : 'blue'
-                    }
-                    size="sm"
-                  >
-                    {selectedCall.sentiment}
-                  </Badge>
-                </div>
-              </div>
-
-              {/* Executive Summary */}
-              <div className="p-4 rounded-2xl bg-blue-950/20 border border-blue-500/20 space-y-1.5">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-blue-400">
-                  <Sparkles className="w-3.5 h-3.5" />
+              {/* Call Summary & Key Takeaways */}
+              <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                  <Sparkles className="w-4 h-4 text-cyan-400" />
                   <span>AI Executive Summary</span>
                 </div>
-                <p className="text-xs text-slate-200 leading-relaxed">
+                <p className="text-xs text-slate-300 leading-relaxed">
                   {selectedCall.summary}
                 </p>
-              </div>
-
-              {/* Next Action */}
-              <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/20 flex items-start gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-                <div className="text-xs">
-                  <span className="font-bold text-emerald-300 block mb-0.5">Automated Next Action</span>
-                  <p className="text-slate-300">{selectedCall.nextAction}</p>
+                <div className="pt-2 border-t border-white/[0.04] flex items-center justify-between text-[11px] text-slate-400">
+                  <span>Sentiment: <strong className="text-white capitalize">{selectedCall.sentiment}</strong></span>
+                  <span>Next Action: <strong className="text-cyan-400">{selectedCall.nextAction}</strong></span>
                 </div>
               </div>
 
               {/* Verbatim Transcript */}
-              <div className="space-y-3 pt-2">
-                <div className="flex items-center gap-2 pb-2 border-b border-white/[0.06]">
-                  <FileText className="w-4 h-4 text-slate-400" />
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                    Verbatim Audio Transcript
-                  </h4>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-white">
+                  <FileText className="w-4 h-4 text-blue-400" />
+                  <h4>Transcript & Dialogue</h4>
                 </div>
 
                 <div className="space-y-2.5">
@@ -347,21 +279,23 @@ export const AICallsPage: React.FC<AICallsPageProps> = ({
 
             {/* Bottom Actions */}
             <div className="p-4 border-t border-white/[0.08] flex items-center justify-between gap-3 bg-white/[0.02]">
-              <span className="text-xs text-slate-500">
-                Logged to CRM: <strong>Pramanik Group Master DB</strong>
-              </span>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => onSelectCall(null)}>
-                  Close
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => alert(`Synchronized ${selectedCall.customerName}'s record with HubSpot & Google Calendar.`)}
+              {onDeleteCall && (
+                <button
+                  onClick={() => {
+                    if (confirm(`Delete this call record permanently?`)) {
+                      onDeleteCall(selectedCall.id);
+                      onSelectCall(null);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 font-medium px-2 py-1 rounded-lg hover:bg-rose-500/10 transition-colors"
                 >
-                  Sync to External CRM
-                </Button>
-              </div>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Call Log</span>
+                </button>
+              )}
+              <Button variant="outline" size="sm" onClick={() => onSelectCall(null)}>
+                Close
+              </Button>
             </div>
           </div>
         </div>

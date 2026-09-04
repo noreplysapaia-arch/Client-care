@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   AppView,
   AIEmployee,
@@ -17,6 +17,32 @@ import {
   initialDocuments,
   initialAppointments,
 } from './data/mockData';
+import {
+  testConnection,
+  seedInitialDataIfEmpty,
+  subscribeToAgents,
+  subscribeToLeads,
+  subscribeToCalls,
+  subscribeToWorkflows,
+  subscribeToDocuments,
+  subscribeToAppointments,
+  addAgent,
+  toggleAgentStatus,
+  deleteAgent,
+  addLead,
+  updateLeadStatus,
+  deleteLead,
+  deleteCall,
+  toggleWorkflow,
+  addWorkflow,
+  updateWorkflow,
+  deleteWorkflow,
+  addDocument,
+  deleteDocument,
+  addAppointment,
+  updateAppointmentStatus,
+  deleteAppointment,
+} from './services/firebase';
 
 // Landing Page
 import { LandingPage } from './components/landing/LandingPage';
@@ -43,13 +69,16 @@ export default function App() {
   // Current active view
   const [currentView, setCurrentView] = useState<AppView>('landing');
 
-  // Core platform states
+  // Core platform states backed by Firestore
   const [agents, setAgents] = useState<AIEmployee[]>(initialAIEmployees);
   const [leads, setLeads] = useState<Lead[]>(initialLeads);
   const [calls, setCalls] = useState<AICall[]>(initialCalls);
   const [workflows, setWorkflows] = useState<AutomationWorkflow[]>(initialWorkflows);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>(initialDocuments);
   const [appointments, setAppointments] = useState<Appointment[]>(initialAppointments);
+
+  // Firestore connectivity indicator
+  const [isFirestoreConnected, setIsFirestoreConnected] = useState<boolean>(true);
 
   // Active call inspector
   const [selectedCall, setSelectedCall] = useState<AICall | null>(null);
@@ -72,42 +101,255 @@ export default function App() {
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
   });
 
-  // Handlers
+  // Setup Firestore live listeners and bootstrap initial data
+  useEffect(() => {
+    let isMounted = true;
+
+    const bootstrapAndSubscribe = async () => {
+      try {
+        const isOk = await testConnection();
+        if (isMounted) setIsFirestoreConnected(isOk);
+
+        // Seed initial data if collections are empty in Firestore
+        await seedInitialDataIfEmpty({
+          agents: initialAIEmployees,
+          leads: initialLeads,
+          calls: initialCalls,
+          workflows: initialWorkflows,
+          documents: initialDocuments,
+          appointments: initialAppointments,
+        });
+      } catch (err) {
+        console.warn('Firestore initialization notice:', err);
+      }
+    };
+
+    bootstrapAndSubscribe();
+
+    // 1. Agents onSnapshot listener
+    const unsubAgents = subscribeToAgents((liveAgents) => {
+      if (liveAgents && liveAgents.length > 0) {
+        setAgents(liveAgents);
+      }
+    });
+
+    // 2. Leads onSnapshot listener
+    const unsubLeads = subscribeToLeads((liveLeads) => {
+      if (liveLeads && liveLeads.length > 0) {
+        setLeads(liveLeads);
+      }
+    });
+
+    // 3. Calls onSnapshot listener
+    const unsubCalls = subscribeToCalls((liveCalls) => {
+      if (liveCalls && liveCalls.length > 0) {
+        setCalls(liveCalls);
+      }
+    });
+
+    // 4. Workflows onSnapshot listener
+    const unsubWorkflows = subscribeToWorkflows((liveWorkflows) => {
+      if (liveWorkflows && liveWorkflows.length > 0) {
+        setWorkflows(liveWorkflows);
+      }
+    });
+
+    // 5. Knowledge Documents onSnapshot listener
+    const unsubDocuments = subscribeToDocuments((liveDocuments) => {
+      if (liveDocuments && liveDocuments.length > 0) {
+        setDocuments(liveDocuments);
+      }
+    });
+
+    // 6. Appointments onSnapshot listener
+    const unsubAppointments = subscribeToAppointments((liveAppointments) => {
+      if (liveAppointments && liveAppointments.length > 0) {
+        setAppointments(liveAppointments);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubAgents();
+      unsubLeads();
+      unsubCalls();
+      unsubWorkflows();
+      unsubDocuments();
+      unsubAppointments();
+    };
+  }, []);
+
+  // Voice demo handler
   const handleOpenVoiceDemo = (agent?: AIEmployee) => {
     setTestingAgent(agent || agents[0]);
     setIsVoiceDemoOpen(true);
   };
 
-  const handleAgentCreated = (newAgent: AIEmployee) => {
+  // Agent CRUD
+  const handleAgentCreated = async (newAgent: AIEmployee) => {
+    // Optimistic local update
     setAgents((prev) => [newAgent, ...prev]);
+    try {
+      await addAgent(newAgent);
+    } catch (err) {
+      console.error('Failed to create agent in Firestore:', err);
+    }
   };
 
-  const handleToggleAgentStatus = (agentId: string) => {
+  const handleToggleAgentStatus = async (agentId: string) => {
+    const target = agents.find((a) => a.id === agentId);
+    if (!target) return;
+    const nextStatus = target.status === 'active' ? 'paused' : 'active';
     setAgents((prev) =>
-      prev.map((a) =>
-        a.id === agentId
-          ? { ...a, status: a.status === 'active' ? 'paused' : 'active' }
-          : a
-      )
+      prev.map((a) => (a.id === agentId ? { ...a, status: nextStatus } : a))
     );
+    try {
+      await toggleAgentStatus(agentId, target.status);
+    } catch (err) {
+      console.error('Failed to toggle agent status:', err);
+    }
   };
 
-  const handleDeleteAgent = (agentId: string) => {
+  const handleDeleteAgent = async (agentId: string) => {
     setAgents((prev) => prev.filter((a) => a.id !== agentId));
+    try {
+      await deleteAgent(agentId);
+    } catch (err) {
+      console.error('Failed to delete agent:', err);
+    }
   };
 
-  const handleAddLead = (newLead: Lead) => {
+  // Lead CRUD
+  const handleAddLead = async (newLead: Lead) => {
     setLeads((prev) => [newLead, ...prev]);
+    try {
+      await addLead(newLead);
+    } catch (err) {
+      console.error('Failed to add lead to Firestore:', err);
+    }
   };
 
-  const handleToggleWorkflow = (wfId: string) => {
-    setWorkflows((prev) =>
-      prev.map((w) => (w.id === wfId ? { ...w, active: !w.active } : w))
+  const handleUpdateLeadStatus = async (leadId: string, newStatus: Lead['status']) => {
+    setLeads((prev) =>
+      prev.map((l) => (l.id === leadId ? { ...l, status: newStatus } : l))
     );
+    try {
+      await updateLeadStatus(leadId, newStatus);
+    } catch (err) {
+      console.error('Failed to update lead status:', err);
+    }
   };
 
-  const handleAddDocument = (newDoc: KnowledgeDocument) => {
+  const handleDeleteLead = async (leadId: string) => {
+    setLeads((prev) => prev.filter((l) => l.id !== leadId));
+    try {
+      await deleteLead(leadId);
+    } catch (err) {
+      console.error('Failed to delete lead:', err);
+    }
+  };
+
+  // Calls CRUD
+  const handleDeleteCall = async (callId: string) => {
+    setCalls((prev) => prev.filter((c) => c.id !== callId));
+    try {
+      await deleteCall(callId);
+    } catch (err) {
+      console.error('Failed to delete call:', err);
+    }
+  };
+
+  // Workflow CRUD
+  const handleToggleWorkflow = async (wfId: string) => {
+    const target = workflows.find((w) => w.id === wfId);
+    if (!target) return;
+    const nextActive = !target.active;
+    setWorkflows((prev) =>
+      prev.map((w) => (w.id === wfId ? { ...w, active: nextActive } : w))
+    );
+    try {
+      await toggleWorkflow(wfId, target.active);
+    } catch (err) {
+      console.error('Failed to toggle workflow:', err);
+    }
+  };
+
+  const handleAddWorkflow = async (newWf: AutomationWorkflow) => {
+    setWorkflows((prev) => [newWf, ...prev]);
+    try {
+      await addWorkflow(newWf);
+    } catch (err) {
+      console.error('Failed to add workflow:', err);
+    }
+  };
+
+  const handleUpdateWorkflow = async (wfId: string, data: Partial<AutomationWorkflow>) => {
+    setWorkflows((prev) =>
+      prev.map((w) => (w.id === wfId ? { ...w, ...data } : w))
+    );
+    try {
+      await updateWorkflow(wfId, data);
+    } catch (err) {
+      console.error('Failed to update workflow:', err);
+    }
+  };
+
+  const handleDeleteWorkflow = async (wfId: string) => {
+    setWorkflows((prev) => prev.filter((w) => w.id !== wfId));
+    try {
+      await deleteWorkflow(wfId);
+    } catch (err) {
+      console.error('Failed to delete workflow:', err);
+    }
+  };
+
+  // Knowledge Document CRUD
+  const handleAddDocument = async (newDoc: KnowledgeDocument) => {
     setDocuments((prev) => [newDoc, ...prev]);
+    try {
+      await addDocument(newDoc);
+    } catch (err) {
+      console.error('Failed to add document:', err);
+    }
+  };
+
+  const handleDeleteDocument = async (docId: string) => {
+    setDocuments((prev) => prev.filter((d) => d.id !== docId));
+    try {
+      await deleteDocument(docId);
+    } catch (err) {
+      console.error('Failed to delete document:', err);
+    }
+  };
+
+  // Appointment CRUD
+  const handleAddAppointment = async (newApt: Appointment) => {
+    setAppointments((prev) => [newApt, ...prev]);
+    try {
+      await addAppointment(newApt);
+    } catch (err) {
+      console.error('Failed to add appointment:', err);
+    }
+  };
+
+  const handleUpdateAppointmentStatus = async (aptId: string, status: Appointment['status']) => {
+    setAppointments((prev) =>
+      prev.map((a) => (a.id === aptId ? { ...a, status } : a))
+    );
+    try {
+      await updateAppointmentStatus(aptId, status);
+    } catch (err) {
+      console.error('Failed to update appointment status:', err);
+    }
+  };
+
+  const handleDeleteAppointment = async (aptId: string) => {
+    setAppointments((prev) => prev.filter((a) => a.id !== aptId));
+    try {
+      await deleteAppointment(aptId);
+    } catch (err) {
+      console.error('Failed to delete appointment:', err);
+    }
   };
 
   // Render view
@@ -128,7 +370,7 @@ export default function App() {
           agent={testingAgent}
         />
 
-        {/* Dedicated Bangla AI Live Call Modal */}
+        {/* Dedicated Live Voice Call Modal */}
         <BanglaVoiceCallModal
           isOpen={isBanglaVoiceModalOpen}
           onClose={() => setIsBanglaVoiceModalOpen(false)}
@@ -142,7 +384,7 @@ export default function App() {
           onTestAgent={(agent) => handleOpenVoiceDemo(agent)}
         />
 
-        {/* Persistent Floating Bangla Call Launcher Button */}
+        {/* Persistent Floating Call Launcher Button */}
         <div className="fixed bottom-5 right-5 z-40">
           <button
             onClick={() => setIsBanglaVoiceModalOpen(true)}
@@ -153,7 +395,7 @@ export default function App() {
               <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
             </span>
             <PhoneCall className="w-4 h-4 text-emerald-300 group-hover:rotate-12 transition-transform" />
-            <span className="tracking-wide">🇧🇩 বাংলা ভয়েস কল</span>
+            <span className="tracking-wide">Live Voice Call</span>
           </button>
         </div>
       </>
@@ -168,6 +410,7 @@ export default function App() {
       onOpenBuilder={() => setIsBuilderOpen(true)}
       onOpenVoiceDemo={() => handleOpenVoiceDemo()}
       onSignOut={() => setCurrentView('landing')}
+      firestoreLive={isFirestoreConnected}
     >
       {/* View Switcher */}
       {currentView === 'dashboard' && (
@@ -211,6 +454,7 @@ export default function App() {
           selectedCall={selectedCall}
           onSelectCall={setSelectedCall}
           onOpenVoiceDemo={() => handleOpenVoiceDemo()}
+          onDeleteCall={handleDeleteCall}
         />
       )}
 
@@ -218,6 +462,8 @@ export default function App() {
         <LeadsPage
           leads={leads}
           onAddLead={handleAddLead}
+          onUpdateLeadStatus={handleUpdateLeadStatus}
+          onDeleteLead={handleDeleteLead}
           onOpenVoiceDemo={() => handleOpenVoiceDemo()}
         />
       )}
@@ -226,6 +472,9 @@ export default function App() {
         <AutomationsPage
           workflows={workflows}
           onToggleWorkflow={handleToggleWorkflow}
+          onAddWorkflow={handleAddWorkflow}
+          onUpdateWorkflow={handleUpdateWorkflow}
+          onDeleteWorkflow={handleDeleteWorkflow}
           onOpenVoiceDemo={() => handleOpenVoiceDemo()}
         />
       )}
@@ -234,6 +483,7 @@ export default function App() {
         <KnowledgePage
           documents={documents}
           onAddDocument={handleAddDocument}
+          onDeleteDocument={handleDeleteDocument}
         />
       )}
 
@@ -241,6 +491,9 @@ export default function App() {
         <CalendarPage
           appointments={appointments}
           onOpenVoiceDemo={() => handleOpenVoiceDemo()}
+          onAddAppointment={handleAddAppointment}
+          onUpdateAppointmentStatus={handleUpdateAppointmentStatus}
+          onDeleteAppointment={handleDeleteAppointment}
         />
       )}
 
@@ -255,7 +508,7 @@ export default function App() {
         agent={testingAgent}
       />
 
-      {/* Dedicated Bangla AI Live Call Modal */}
+      {/* Dedicated Live Voice Call Modal */}
       <BanglaVoiceCallModal
         isOpen={isBanglaVoiceModalOpen}
         onClose={() => setIsBanglaVoiceModalOpen(false)}
@@ -269,7 +522,7 @@ export default function App() {
         onTestAgent={(agent) => handleOpenVoiceDemo(agent)}
       />
 
-      {/* Persistent Floating Bangla Call Launcher Button */}
+      {/* Persistent Floating Call Launcher Button */}
       <div className="fixed bottom-5 right-5 z-40">
         <button
           onClick={() => setIsBanglaVoiceModalOpen(true)}
@@ -280,7 +533,7 @@ export default function App() {
             <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
           </span>
           <PhoneCall className="w-4 h-4 text-emerald-300 group-hover:rotate-12 transition-transform" />
-          <span className="tracking-wide">🇧🇩 বাংলা ভয়েস কল</span>
+          <span className="tracking-wide">Live Voice Call</span>
         </button>
       </div>
     </AppLayout>

@@ -20,19 +20,13 @@ export const BanglaVoiceCallModal: React.FC<BanglaVoiceCallModalProps> = ({
         <button
           onClick={onClose}
           className="absolute -top-12 right-0 sm:-right-4 p-2 rounded-full bg-white/[0.1] hover:bg-white/[0.2] text-slate-300 hover:text-white transition-colors border border-white/[0.1] z-50"
-          title="বন্ধ করুন"
+          title="Close"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* Live Call Widget */}
-        <BanglaLiveCallWidget
-          initialName="Md Sajid Alibab 2026"
-          initialPhone="0177790126"
-          initialEmail="sajidpramanik2026@gmail.com"
-          initialWebsite="facebook.com"
-          onCallEnded={onClose}
-        />
+        <BanglaLiveCallWidget onCallEnded={onClose} />
       </div>
     </div>
   );

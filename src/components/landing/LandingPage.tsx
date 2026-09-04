@@ -164,8 +164,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center max-w-3xl mx-auto mb-12 lg:mb-16">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-950/80 via-indigo-950/80 to-cyan-950/80 border border-cyan-500/30 text-xs font-semibold text-cyan-300 mb-5 backdrop-blur-md shadow-lg shadow-cyan-950/40">
-              <span className="text-base">🇧🇩</span>
-              <span className="tracking-wide">Solution In Bangladesh</span>
+              <span className="tracking-wide">AI Enterprise Calling Solution</span>
               <span className="text-slate-500">•</span>
               <span className="text-white">Powered by AI Designed to Scale Your Business</span>
             </div>
@@ -175,7 +174,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </h1>
 
             <p className="text-lg sm:text-xl text-slate-300 leading-relaxed max-w-2xl mx-auto mb-4 font-normal">
-              সম্পূর্ণ খাঁটি ও ন্যাচারাল <strong className="text-cyan-300 font-semibold">রিয়েল বাংলা ভয়েসে</strong> ২৪/৭ কাস্টমার কল রিসিভ, ফেসবুক পেজ অর্ডার কনফার্ম ও সেলস অটোমেশন সিস্টেম।
+              Natural, human-like <strong className="text-cyan-300 font-semibold">Voice AI Employees</strong> for 24/7 customer inbound calls, qualification, and end-to-end sales automation.
             </p>
             <p className="text-sm text-slate-400 max-w-xl mx-auto mb-8">
               Client Care by Pramanik Group helps businesses automate customer care, calling, lead qualification, and daily CRM operations with intelligent voice AI employees.

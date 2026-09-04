@@ -62,7 +62,7 @@ export const HeroAssistantDemo: React.FC<HeroAssistantDemoProps> = ({
 
   return (
     <div className="relative w-full max-w-xl mx-auto">
-      {/* Tab Switcher: Real Bangla Voice vs Enterprise Global */}
+      {/* Tab Switcher: Interactive Voice vs Enterprise Global */}
       <div className="flex items-center justify-center mb-4">
         <div className="p-1 rounded-2xl bg-white/[0.06] border border-white/[0.1] backdrop-blur-xl flex items-center gap-1">
           <button
@@ -73,8 +73,8 @@ export const HeroAssistantDemo: React.FC<HeroAssistantDemoProps> = ({
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <span>🇧🇩</span>
-            <span>লাইভ বাংলা ভয়েস কল (Live Bangla AI)</span>
+            <PhoneCall className="w-3.5 h-3.5" />
+            <span>Interactive Live Voice AI</span>
           </button>
           <button
             onClick={() => setActiveTab('enterprise')}
@@ -91,12 +91,7 @@ export const HeroAssistantDemo: React.FC<HeroAssistantDemoProps> = ({
       </div>
 
       {activeTab === 'bangla' ? (
-        <BanglaLiveCallWidget
-          initialName="Md Sajid Alibab 2026"
-          initialPhone="0177790126"
-          initialEmail="sajidpramanik2026@gmail.com"
-          initialWebsite="facebook.com"
-        />
+        <BanglaLiveCallWidget />
       ) : (
         <div className="relative">
           {/* Outer subtle glow */}

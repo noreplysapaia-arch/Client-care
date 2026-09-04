@@ -12,7 +12,6 @@ import {
   Sliders,
   CheckCircle2,
   Activity,
-  ChevronDown,
   ChevronUp,
 } from 'lucide-react';
 import { AIEmployee } from '../../types';
@@ -22,7 +21,6 @@ import {
   voiceFoundation,
   VoiceDiagnostic,
 } from '../../services/voiceFoundation';
-import { getBanglaAIResponse } from '../../services/banglaVoiceService';
 
 interface VoiceTestModalProps {
   isOpen: boolean;
@@ -35,7 +33,6 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
   onClose,
   agent,
 }) => {
-  const [language, setLanguage] = useState<'bn' | 'en'>('bn');
   const [callDuration, setCallDuration] = useState<number>(0);
   const [aiState, setAiState] = useState<'listening' | 'thinking' | 'speaking'>('speaking');
   const [isMuted, setIsMuted] = useState<boolean>(false);
@@ -55,10 +52,7 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
   const [diagnostics, setDiagnostics] = useState<VoiceDiagnostic | null>(null);
 
   // Initial greeting helper
-  const getInitialGreeting = (lang: 'bn' | 'en') => {
-    if (lang === 'bn') {
-      return `আসসালামু আলাইকুম! ক্লায়েন্ট কেয়ার এআই-তে আপনাকে স্বাগতম। আমি ${agent.name}, আপনার ${agent.role} হিসেবে আছি। আপনার ব্যবসার সেলস ও কাস্টমার কেয়ার অটোমেশনে আজ আমি কীভাবে সাহায্য করতে পারি?`;
-    }
+  const getInitialGreeting = () => {
     return `Hello! Thank you for calling Client Care by Pramanik Group. My name is ${agent.name}, your ${agent.role}. How can I assist your business today?`;
   };
 
@@ -66,7 +60,7 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
     {
       speaker: 'ai',
       time: '00:01',
-      text: getInitialGreeting('bn'),
+      text: getInitialGreeting(),
     },
   ]);
 
@@ -97,20 +91,6 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
     };
   }, []);
 
-  // Filter voices appropriate for current language
-  const filteredVoices = availableVoices.filter((v) => {
-    if (language === 'bn') {
-      return (
-        v.lang.startsWith('bn') ||
-        v.name.toLowerCase().includes('bangla') ||
-        v.name.toLowerCase().includes('bengali')
-      );
-    }
-    return v.lang.startsWith('en');
-  });
-
-  const displayVoices = filteredVoices.length > 0 ? filteredVoices : availableVoices;
-
   // Auto-scroll transcript
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -137,7 +117,7 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
     setAiState('speaking');
     voiceFoundation.speak({
       text,
-      lang: language === 'bn' ? 'bn-BD' : 'en-US',
+      lang: 'en-US',
       voiceName: selectedVoiceName || undefined,
       rate: speechRate,
       pitch: speechPitch,
@@ -153,11 +133,11 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
     });
   };
 
-  // Initial greeting trigger on open or language switch
+  // Initial greeting trigger on open
   useEffect(() => {
     if (isOpen) {
       voiceFoundation.playConnectedChime();
-      const greeting = getInitialGreeting(language);
+      const greeting = getInitialGreeting();
       setTranscript([
         {
           speaker: 'ai',
@@ -173,7 +153,7 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
       setIsListeningMic(false);
       setInterimTranscript('');
     }
-  }, [isOpen, language, agent]);
+  }, [isOpen, agent]);
 
   // Handle user response
   const handleSendMessage = (textToSend?: string) => {
@@ -192,40 +172,32 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
     // Generate contextual agent response
     setTimeout(() => {
       let aiReply = '';
-      if (language === 'bn') {
-        aiReply = getBanglaAIResponse(
-          message,
-          'সাজিদ ভাই',
-          agent.gender === 'male' ? 'tanvir' : 'sarah'
-        );
+      const lower = message.toLowerCase();
+      if (lower.includes('price') || lower.includes('cost') || lower.includes('package')) {
+        aiReply = `Our packages start with a completely free MVP tier to explore. For commercial production with dedicated telephone numbers and unlimited voice minutes, our Growth plan starts at $149 per month. What is your estimated monthly call volume?`;
+      } else if (
+        lower.includes('demo') ||
+        lower.includes('meeting') ||
+        lower.includes('schedule') ||
+        lower.includes('book')
+      ) {
+        aiReply = `I would be glad to book that for you right now! I have availability tomorrow at 11:00 AM Eastern, or Thursday at 2:00 PM. Which works best for your schedule?`;
+      } else if (
+        lower.includes('security') ||
+        lower.includes('privacy') ||
+        lower.includes('safe') ||
+        lower.includes('pramanik')
+      ) {
+        aiReply = `Client Care is designed with strong data privacy controls, encryption in transit and at rest, and zero data sharing for public AI training.`;
+      } else if (
+        lower.includes('crm') ||
+        lower.includes('integrate') ||
+        lower.includes('salesforce') ||
+        lower.includes('hubspot')
+      ) {
+        aiReply = `Client Care includes a built-in CRM and lead tracker, with webhook support planned for external platforms.`;
       } else {
-        const lower = message.toLowerCase();
-        if (lower.includes('price') || lower.includes('cost') || lower.includes('package')) {
-          aiReply = `Our packages start with a completely free MVP tier to explore. For commercial production with dedicated telephone numbers and unlimited voice minutes, our Growth plan starts at $149 per month. What is your estimated monthly call volume?`;
-        } else if (
-          lower.includes('demo') ||
-          lower.includes('meeting') ||
-          lower.includes('schedule') ||
-          lower.includes('book')
-        ) {
-          aiReply = `I would be glad to book that for you right now! I have availability tomorrow at 11:00 AM Eastern, or Thursday at 2:00 PM. Which works best for your schedule?`;
-        } else if (
-          lower.includes('security') ||
-          lower.includes('privacy') ||
-          lower.includes('safe') ||
-          lower.includes('pramanik')
-        ) {
-          aiReply = `Client Care is designed with strong data privacy controls, encryption in transit and at rest, and zero data sharing for public AI training.`;
-        } else if (
-          lower.includes('crm') ||
-          lower.includes('integrate') ||
-          lower.includes('salesforce') ||
-          lower.includes('hubspot')
-        ) {
-          aiReply = `Client Care includes a built-in CRM and lead tracker, with webhook support planned for external platforms.`;
-        } else {
-          aiReply = `Understood. As your ${agent.role}, I can manage discovery, qualification, and automated follow-ups across all your customer touchpoints. Would you like me to send a summary to your email or book a live walkthrough?`;
-        }
+        aiReply = `Understood. As your ${agent.role}, I can manage discovery, qualification, and automated follow-ups across all your customer touchpoints. Would you like me to send a summary to your email or book a live walkthrough?`;
       }
 
       setTranscript((prev) => [
@@ -258,7 +230,7 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
     });
 
     const started = voiceFoundation.startListening({
-      lang: language === 'bn' ? 'bn-BD' : 'en-US',
+      lang: 'en-US',
       interimResults: true,
       onStart: () => {
         setIsListeningMic(true);
@@ -275,14 +247,14 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
         setMicFrequencyData(undefined);
         handleSendMessage(spokenText);
       },
-      onError: (msg, code) => {
+      onError: (_msg, code) => {
         setIsListeningMic(false);
         setInterimTranscript('');
         voiceFoundation.stopMicMonitoring();
         setMicAudioLevel(0);
         setMicFrequencyData(undefined);
         if (code === 'not-allowed') {
-          alert('মাইক্রোফোন ব্যবহারের অনুমতি প্রয়োজন। দয়া করে ব্রাউজারের পারমিশন দিন।');
+          alert('Microphone permission is required. Please allow microphone access in your browser.');
         }
       },
       onEnd: () => {
@@ -294,7 +266,7 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
     });
 
     if (!started) {
-      alert('আপনার ব্রাউজারে মাইক্রোফোন স্পিচ রিকগনিশন সক্রিয় নয়। আপনি নিচে লিখেও মেসেজ পাঠাতে পারেন!');
+      alert('Speech recognition is not available in your browser. You can type messages below!');
     }
   };
 
@@ -314,43 +286,17 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
       <div className="relative w-full max-w-5xl h-[92vh] max-h-[860px] card-surface rounded-3xl border border-white/[0.12] shadow-2xl flex flex-col md:flex-row overflow-hidden">
         {/* Left Side: Voice Console Interface */}
         <div className="flex-1 flex flex-col justify-between p-5 sm:p-7 border-b md:border-b-0 md:border-r border-white/[0.08] relative bg-gradient-to-b from-[#0B0F1D]/90 to-[#070A14]/95 overflow-y-auto">
-          {/* Top Engine Diagnostics & Language Switcher */}
+          {/* Top Engine Diagnostics */}
           <div>
             <div className="flex items-center justify-between gap-3 mb-2">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
                 <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
-                  {language === 'bn' ? '🇧🇩 ব্রাউজার ভয়েস ইঞ্জিন' : 'Browser Voice Foundation'}
+                  Browser Voice Foundation
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Language Switcher */}
-                <div className="p-0.5 rounded-xl bg-white/[0.06] border border-white/[0.1] flex items-center text-xs">
-                  <button
-                    onClick={() => {
-                      voiceFoundation.stopSpeaking();
-                      setLanguage('bn');
-                    }}
-                    className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
-                      language === 'bn' ? 'bg-cyan-500 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    বাংলা 🇧🇩
-                  </button>
-                  <button
-                    onClick={() => {
-                      voiceFoundation.stopSpeaking();
-                      setLanguage('en');
-                    }}
-                    className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
-                      language === 'en' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    English
-                  </button>
-                </div>
-
                 {/* Call Timer */}
                 <div className="px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] text-xs font-mono text-slate-300">
                   {formatTime(callDuration)}
@@ -401,7 +347,7 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
                 </h5>
                 <button
                   onClick={() => setShowSettings(false)}
-                  className="text-slate-400 hover:text-white"
+                  className="text-slate-400 hover:text-white cursor-pointer"
                 >
                   <ChevronUp className="w-4 h-4" />
                 </button>
@@ -419,7 +365,7 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
                   className="w-full bg-[#070A14] border border-white/[0.1] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
                 >
                   <option value="">Default Recommended Voice</option>
-                  {displayVoices.map((v, i) => (
+                  {availableVoices.map((v, i) => (
                     <option key={i} value={v.name}>
                       {v.name} ({v.lang})
                     </option>
@@ -464,13 +410,9 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
               <div className="flex justify-end pt-1">
                 <button
                   onClick={() =>
-                    speakText(
-                      language === 'bn'
-                        ? 'এটি ক্লায়েন্ট কেয়ার এআই-এর রিয়েল ভয়েস টেস্ট।'
-                        : 'This is a real browser voice test from Client Care AI.'
-                    )
+                    speakText('This is a real browser voice test from Client Care AI.')
                   }
-                  className="px-3 py-1.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.15] text-white font-medium text-[11px] transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.15] text-white font-medium text-[11px] transition-colors cursor-pointer"
                 >
                   🔊 Test Audio Sample
                 </button>
@@ -481,7 +423,6 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
           {/* Center Agent Visual & Waveform */}
           <div className="flex flex-col items-center justify-center text-center my-auto py-4">
             <div className="relative mb-4">
-              {/* Pulsing ring during speaking/listening */}
               <div
                 className={`absolute -inset-3 rounded-full bg-blue-500/20 blur-md transition-all duration-300 ${
                   aiState === 'speaking' || isListeningMic ? 'scale-110 opacity-100' : 'scale-95 opacity-30'
@@ -509,12 +450,12 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
                 status={isListeningMic ? 'listening' : aiState === 'thinking' ? 'thinking' : aiState === 'speaking' ? 'speaking' : 'idle'}
                 label={
                   isListeningMic
-                    ? language === 'bn' ? 'মাইকে আপনার কথা শুনছি...' : 'Listening to your microphone...'
+                    ? 'Listening to your microphone...'
                     : aiState === 'thinking'
-                    ? language === 'bn' ? 'ভাবছি...' : 'AI Thinking...'
+                    ? 'AI Thinking...'
                     : aiState === 'speaking'
-                    ? language === 'bn' ? 'কথা বলছি...' : 'Speaking...'
-                    : language === 'bn' ? 'প্রস্তুত' : 'Ready'
+                    ? 'Speaking...'
+                    : 'Ready'
                 }
                 size="md"
               />
@@ -596,9 +537,7 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
               >
                 <Mic className="w-4 h-4" />
                 <span>
-                  {isListeningMic
-                    ? language === 'bn' ? 'শুনছি... (ক্লিক করে শেষ করুন)' : 'Listening... (Click to Finish)'
-                    : language === 'bn' ? 'মাইকে বলুন 🎙️' : 'Speak into Mic 🎙️'}
+                  {isListeningMic ? 'Listening... (Click to Finish)' : 'Speak into Mic 🎙️'}
                 </span>
               </button>
 
@@ -612,9 +551,7 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
               </button>
             </div>
             <p className="text-[11px] text-center text-slate-400">
-              {language === 'bn'
-                ? 'রিয়েল ব্রাউজার ভয়েস ফাউন্ডেশন • ক্লায়েন্ট কেয়ার এআই'
-                : 'Native Web Speech & Web Audio Foundation Active'}
+              Native Web Speech & Web Audio Foundation Active
             </p>
           </div>
         </div>
@@ -624,12 +561,10 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
           <div className="pb-3.5 border-b border-white/[0.08] flex items-center justify-between">
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-blue-400" />
-              <h4 className="text-sm font-bold text-white">
-                {language === 'bn' ? 'লাইভ কল ট্রান্সক্রিপ্ট' : 'Live Call Transcript'}
-              </h4>
+              <h4 className="text-sm font-bold text-white">Live Call Transcript</h4>
             </div>
             <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
-              {language === 'bn' ? 'বাংলা ভয়েস' : 'Real-Time'}
+              Real-Time
             </span>
           </div>
 
@@ -646,16 +581,14 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
               >
                 <div className="flex items-center justify-between text-[10px] mb-1 font-semibold">
                   <span className={item.speaker === 'ai' ? 'text-blue-400' : 'text-slate-400'}>
-                    {item.speaker === 'ai'
-                      ? `${agent.name} (${language === 'bn' ? 'এআই' : 'AI'})`
-                      : language === 'bn' ? 'আপনি (কাস্টমার)' : 'You (Customer)'}
+                    {item.speaker === 'ai' ? `${agent.name} (AI)` : 'You (Customer)'}
                   </span>
                   <div className="flex items-center gap-1.5">
                     <span className="text-slate-500 font-mono">{item.time}</span>
                     {item.speaker === 'ai' && (
                       <button
                         onClick={() => speakText(item.text)}
-                        className="text-cyan-400 hover:text-cyan-300 p-0.5"
+                        className="text-cyan-400 hover:text-cyan-300 p-0.5 cursor-pointer"
                         title="Replay Audio"
                       >
                         <Volume2 className="w-3 h-3" />
@@ -671,7 +604,7 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
             {isListeningMic && interimTranscript && (
               <div className="p-3 rounded-2xl text-xs bg-emerald-950/30 border border-emerald-500/30 text-emerald-200 ml-4 animate-pulse">
                 <div className="text-[10px] text-emerald-400 font-semibold mb-1">
-                  {language === 'bn' ? 'আপনি বলছেন...' : 'Transcribing voice...'}
+                  Transcribing voice...
                 </div>
                 <p>"{interimTranscript}"</p>
               </div>
@@ -691,7 +624,7 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
             >
               <input
                 type="text"
-                placeholder={language === 'bn' ? 'বাংলায় কোনো প্রশ্ন লিখুন...' : 'Type a response to test...'}
+                placeholder="Type a response to test..."
                 value={userInput}
                 onChange={(e) => setUserInput(e.target.value)}
                 className="flex-1 bg-white/[0.04] border border-white/[0.1] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50"
@@ -705,14 +638,12 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
               </button>
             </form>
             <div className="flex items-center justify-between mt-2 text-[10px] text-slate-500">
-              <span>
-                {language === 'bn' ? 'টেস্ট করুন: "প্যাকেজের দাম কত", "অর্ডার নেবে কীভাবে"' : 'Quick tests: "pricing", "book meeting", "security"'}
-              </span>
+              <span>Quick tests: "pricing", "book meeting", "security"</span>
               <button
                 onClick={() => setTranscript([transcript[0]])}
                 className="text-slate-400 hover:text-slate-200 flex items-center gap-1 cursor-pointer"
               >
-                <RefreshCw className="w-2.5 h-2.5" /> {language === 'bn' ? 'ক্লিন' : 'Clear'}
+                <RefreshCw className="w-2.5 h-2.5" /> Clear
               </button>
             </div>
           </div>

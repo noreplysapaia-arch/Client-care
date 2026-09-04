@@ -1,16 +1,12 @@
 import React, { useState } from 'react';
 import {
-  Database,
   Upload,
   Globe,
   HelpCircle,
   FileText,
   Plus,
   RefreshCw,
-  CheckCircle2,
   Trash2,
-  Sparkles,
-  Link2,
 } from 'lucide-react';
 import { KnowledgeDocument } from '../../types';
 import { Button } from '../ui/Button';
@@ -20,13 +16,14 @@ import { Modal } from '../ui/Modal';
 interface KnowledgePageProps {
   documents: KnowledgeDocument[];
   onAddDocument: (doc: KnowledgeDocument) => void;
+  onDeleteDocument?: (docId: string) => void;
 }
 
 export const KnowledgePage: React.FC<KnowledgePageProps> = ({
   documents,
   onAddDocument,
+  onDeleteDocument,
 }) => {
-  const [docsList, setDocsList] = useState<KnowledgeDocument[]>(documents);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'all' | 'file' | 'url' | 'faq'>('all');
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -40,8 +37,8 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({
     setIsSyncing(true);
     setTimeout(() => {
       setIsSyncing(false);
-      alert('Vector database successfully re-indexed and embedded into all active AI Employees.');
-    }, 1200);
+      alert('Knowledge base vectors successfully synced with Firestore and active AI voice agents.');
+    }, 1000);
   };
 
   const handleCreateDocument = (e: React.FormEvent) => {
@@ -53,7 +50,7 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({
       id: `doc_${Date.now()}`,
       title: newTitle,
       type: newType,
-      source: newSource || (newType === 'url' ? 'https://pramanikgroup.com' : 'Direct manual upload'),
+      source: newSource || (newType === 'url' ? 'https://clientcare.ai' : 'Direct manual upload'),
       status: 'synced',
       lastUpdated: 'Just now',
       updatedAt: 'Just now',
@@ -64,17 +61,18 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({
     };
 
     onAddDocument(newDoc);
-    setDocsList((prev) => [newDoc, ...prev]);
     setIsUploadModalOpen(false);
     setNewTitle('');
     setNewSource('');
   };
 
-  const handleDelete = (id: string) => {
-    setDocsList((prev) => prev.filter((d) => d.id !== id));
+  const handleDelete = (id: string, title: string) => {
+    if (confirm(`Remove "${title}" from Firestore knowledge base?`)) {
+      if (onDeleteDocument) onDeleteDocument(id);
+    }
   };
 
-  const filteredDocs = docsList.filter((d) => {
+  const filteredDocs = documents.filter((d) => {
     if (activeTab === 'all') return true;
     return d.type === activeTab;
   });
@@ -89,11 +87,11 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({
               Company Knowledge Base
             </h1>
             <Badge variant="indigo" size="md">
-              {docsList.length} Grounding Sources
+              {documents.length} Grounding Sources
             </Badge>
           </div>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Ground your AI employees in verified company facts, rate cards, SLAs, and technical documentation.
+            Ground your AI employees in verified company facts, rate cards, SLAs, and technical documentation via Firestore.
           </p>
         </div>
 
@@ -105,7 +103,7 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({
             disabled={isSyncing}
             icon={RefreshCw}
           >
-            {isSyncing ? 'Re-indexing...' : 'Re-sync Knowledge'}
+            {isSyncing ? 'Syncing...' : 'Re-sync Knowledge'}
           </Button>
 
           <Button
@@ -195,9 +193,9 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({
                   </td>
                   <td className="py-3.5 px-4 text-right">
                     <button
-                      onClick={() => handleDelete(doc.id)}
-                      className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                      title="Delete Source"
+                      onClick={() => handleDelete(doc.id, doc.title)}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                      title="Delete Source from Firestore"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -234,7 +232,7 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({
                     type="button"
                     key={fmt.type}
                     onClick={() => setNewType(fmt.type as any)}
-                    className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 transition-all ${
+                    className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 transition-all cursor-pointer ${
                       newType === fmt.type
                         ? 'bg-blue-600/20 border-blue-500 text-white'
                         : 'bg-white/[0.03] border-white/[0.06] text-slate-400 hover:text-white'
@@ -270,7 +268,7 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({
               type="text"
               value={newSource}
               onChange={(e) => setNewSource(e.target.value)}
-              placeholder={newType === 'url' ? 'https://yourcompany.com/pricing' : 'internal_sla_v3.pdf'}
+              placeholder={newType === 'url' ? 'https://clientcare.ai/pricing' : 'internal_sla_v3.pdf'}
               className="w-full bg-white/[0.04] border border-white/[0.1] rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
             />
           </div>
@@ -280,7 +278,7 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({
               Cancel
             </Button>
             <Button variant="gradient" size="sm" type="submit">
-              Ingest & Embed Chunks
+              Ingest & Save to Firestore
             </Button>
           </div>
         </form>

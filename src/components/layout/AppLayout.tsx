@@ -30,6 +30,7 @@ interface AppLayoutProps {
   onOpenBuilder: () => void;
   onOpenVoiceDemo: () => void;
   onSignOut: () => void;
+  firestoreLive?: boolean;
   children: React.ReactNode;
 }
 
@@ -40,6 +41,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   onOpenBuilder,
   onOpenVoiceDemo,
   onSignOut,
+  firestoreLive = true,
   children,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
@@ -240,6 +242,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-semibold">
+              <span className="relative flex h-2 w-2">
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${firestoreLive ? 'bg-emerald-400' : 'bg-amber-400'} opacity-75`}></span>
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${firestoreLive ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+              </span>
+              <span>{firestoreLive ? 'Firestore Live' : 'Connecting...'}</span>
+            </div>
+
             <button
               onClick={onOpenVoiceDemo}
               className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/30 text-xs font-medium transition-all"

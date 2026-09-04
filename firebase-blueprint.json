@@ -1,0 +1,153 @@
+{
+  "entities": {
+    "Agent": {
+      "title": "Agent",
+      "description": "An autonomous AI employee persona capable of voice and text interactions",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Display name of the agent" },
+        "role": { "type": "string", "description": "Professional role or function of the agent" },
+        "avatar": { "type": "string", "description": "URL to the agent avatar image" },
+        "badgeColor": { "type": "string", "description": "CSS gradient classes for styling" },
+        "status": { "type": "string", "description": "Current status (active, paused, training)" },
+        "capability": { "type": "string", "description": "Core business capability" },
+        "description": { "type": "string", "description": "Detailed description of responsibilities" },
+        "language": { "type": "string", "description": "Supported languages" },
+        "voice": { "type": "string", "description": "Selected voice synthesizer model" },
+        "personality": { "type": "string", "description": "Tone and behavioral traits" },
+        "businessGoal": { "type": "string", "description": "Target KPI or conversational goal" },
+        "instructions": { "type": "string", "description": "System prompt instructions" },
+        "knowledgeSources": { "type": "array", "description": "Linked knowledge document names" },
+        "escalationRule": { "type": "string", "description": "Rule for human handover" },
+        "callsCount": { "type": "number", "description": "Number of calls handled" },
+        "successRate": { "type": "number", "description": "Resolution percentage" },
+        "avgHandlingSec": { "type": "number", "description": "Average duration in seconds" },
+        "phoneExtension": { "type": "string", "description": "Dedicated phone extension" }
+      },
+      "required": ["name", "role", "status"]
+    },
+    "Lead": {
+      "title": "Lead",
+      "description": "A customer or prospect tracked through the CRM pipeline",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Prospect full name" },
+        "company": { "type": "string", "description": "Prospect company or business" },
+        "email": { "type": "string", "description": "Email address" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "source": { "type": "string", "description": "Acquisition source channel" },
+        "aiEmployeeName": { "type": "string", "description": "Assigned AI employee name" },
+        "status": { "type": "string", "description": "Pipeline stage (new, contacted, qualified, proposal, won, lost)" },
+        "leadScore": { "type": "number", "description": "Calculated lead score 0-100" },
+        "intent": { "type": "string", "description": "Prospect's primary intent or request" },
+        "sentiment": { "type": "string", "description": "Sentiment: positive, neutral, negative" },
+        "lastContact": { "type": "string", "description": "Human-readable last contact timestamp" },
+        "nextAction": { "type": "string", "description": "Recommended automated or human next action" },
+        "estimatedValue": { "type": "string", "description": "Estimated deal or pipeline value" }
+      },
+      "required": ["name", "company", "status"]
+    },
+    "AICall": {
+      "title": "AICall",
+      "description": "A logged telephonic or browser voice call handled by an AI Agent",
+      "type": "object",
+      "properties": {
+        "customerName": { "type": "string", "description": "Name of the caller or contact" },
+        "customerPhone": { "type": "string", "description": "Caller phone number" },
+        "customerCompany": { "type": "string", "description": "Caller organization" },
+        "aiEmployeeName": { "type": "string", "description": "Name of the agent handling the call" },
+        "aiEmployeeRole": { "type": "string", "description": "Role of the agent" },
+        "duration": { "type": "string", "description": "Duration string e.g. 02:45" },
+        "durationSec": { "type": "number", "description": "Duration in seconds" },
+        "status": { "type": "string", "description": "Call outcome: completed, in-progress, scheduled, missed" },
+        "intent": { "type": "string", "description": "Primary inquiry category" },
+        "sentiment": { "type": "string", "description": "sentiment: positive, neutral, negative" },
+        "leadScore": { "type": "number", "description": "Lead score outcome" },
+        "timestamp": { "type": "string", "description": "Timestamp formatted string" },
+        "summary": { "type": "string", "description": "AI-generated executive summary" },
+        "nextAction": { "type": "string", "description": "Follow-up action item" },
+        "recordingUrl": { "type": "string", "description": "Audio recording URL" },
+        "transcript": { "type": "array", "description": "Message turn logs with speaker, text, time" }
+      },
+      "required": ["customerName", "aiEmployeeName", "status"]
+    },
+    "Workflow": {
+      "title": "Workflow",
+      "description": "Multi-step automated business workflow",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Workflow name" },
+        "description": { "type": "string", "description": "Purpose and trigger description" },
+        "active": { "type": "boolean", "description": "Active state toggle" },
+        "trigger": { "type": "string", "description": "Event trigger definition" },
+        "executionsCount": { "type": "number", "description": "Total trigger executions" },
+        "successRate": { "type": "number", "description": "Completion success rate" },
+        "steps": { "type": "array", "description": "Ordered nodes in the workflow" }
+      },
+      "required": ["title", "active", "trigger"]
+    },
+    "Document": {
+      "title": "Document",
+      "description": "Company knowledge base document or vector index source",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Document or manual title" },
+        "type": { "type": "string", "description": "file, url, pdf, faq, docx, txt" },
+        "status": { "type": "string", "description": "synced, indexed, processing, failed" },
+        "chunks": { "type": "number", "description": "Embedded vector chunks" },
+        "chunksCount": { "type": "number", "description": "Alternative chunk counter" },
+        "size": { "type": "string", "description": "File or source size" },
+        "updatedAt": { "type": "string", "description": "Last updated timestamp" },
+        "lastUpdated": { "type": "string", "description": "Last sync date label" },
+        "source": { "type": "string", "description": "URL or filename origin" },
+        "category": { "type": "string", "description": "Document category" }
+      },
+      "required": ["title", "type", "status"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Scheduled meeting or consultation booked by AI",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Meeting subject" },
+        "customerName": { "type": "string", "description": "Client contact name" },
+        "customerCompany": { "type": "string", "description": "Client company" },
+        "customerEmail": { "type": "string", "description": "Client email" },
+        "aiEmployeeName": { "type": "string", "description": "Agent who booked the meeting" },
+        "date": { "type": "string", "description": "Meeting date" },
+        "time": { "type": "string", "description": "Meeting time" },
+        "duration": { "type": "string", "description": "Meeting duration string" },
+        "status": { "type": "string", "description": "confirmed, pending, completed" },
+        "type": { "type": "string", "description": "ai-booked, human-booked, follow-up" },
+        "meetingLink": { "type": "string", "description": "Virtual meeting room URL" }
+      },
+      "required": ["title", "customerName", "date", "time", "status"]
+    }
+  },
+  "firestore": {
+    "/agents/{agentId}": {
+      "schema": "Agent",
+      "description": "Collection of autonomous AI Employee personas"
+    },
+    "/leads/{leadId}": {
+      "schema": "Lead",
+      "description": "CRM pipeline prospect leads"
+    },
+    "/calls/{callId}": {
+      "schema": "AICall",
+      "description": "Voice call logs, transcripts, and analysis"
+    },
+    "/workflows/{workflowId}": {
+      "schema": "Workflow",
+      "description": "Autopilot business automations"
+    },
+    "/documents/{documentId}": {
+      "schema": "Document",
+      "description": "Vector knowledge documents and synced sources"
+    },
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Booked calendar meetings and consultations"
+    }
+  }
+}

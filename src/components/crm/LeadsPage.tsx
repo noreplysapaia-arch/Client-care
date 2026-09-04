@@ -1,17 +1,11 @@
 import React, { useState } from 'react';
 import {
-  UserCheck,
   Search,
-  Filter,
   Plus,
   LayoutGrid,
   List,
-  Phone,
-  Mail,
-  ArrowRight,
-  Sparkles,
-  CheckCircle2,
-  Calendar,
+  Trash2,
+  ChevronRight,
 } from 'lucide-react';
 import { Lead } from '../../types';
 import { Badge } from '../ui/Badge';
@@ -21,13 +15,16 @@ import { Modal } from '../ui/Modal';
 interface LeadsPageProps {
   leads: Lead[];
   onAddLead: (lead: Lead) => void;
+  onUpdateLeadStatus?: (leadId: string, newStatus: Lead['status']) => void;
+  onDeleteLead?: (leadId: string) => void;
   onOpenVoiceDemo: () => void;
 }
 
 export const LeadsPage: React.FC<LeadsPageProps> = ({
   leads,
   onAddLead,
-  onOpenVoiceDemo,
+  onUpdateLeadStatus,
+  onDeleteLead,
 }) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -85,14 +82,23 @@ export const LeadsPage: React.FC<LeadsPageProps> = ({
     setNewIntent('');
   };
 
-  const pipelineStages: { key: Lead['status']; label: string; color: string }[] = [
-    { key: 'new', label: 'New', color: 'border-slate-700 bg-slate-900/40' },
-    { key: 'contacted', label: 'Contacted', color: 'border-blue-900/50 bg-blue-950/20' },
-    { key: 'qualified', label: 'Qualified', color: 'border-indigo-900/50 bg-indigo-950/20' },
-    { key: 'proposal', label: 'Proposal', color: 'border-violet-900/50 bg-violet-950/20' },
-    { key: 'won', label: 'Won', color: 'border-emerald-900/50 bg-emerald-950/20' },
-    { key: 'lost', label: 'Lost', color: 'border-rose-900/50 bg-rose-950/20' },
+  const pipelineStages: { key: Lead['status']; label: string }[] = [
+    { key: 'new', label: 'New' },
+    { key: 'contacted', label: 'Contacted' },
+    { key: 'qualified', label: 'Qualified' },
+    { key: 'proposal', label: 'Proposal' },
+    { key: 'won', label: 'Won' },
+    { key: 'lost', label: 'Lost' },
   ];
+
+  const getNextStage = (current: Lead['status']): Lead['status'] | null => {
+    const order: Lead['status'][] = ['new', 'contacted', 'qualified', 'proposal', 'won'];
+    const idx = order.indexOf(current);
+    if (idx >= 0 && idx < order.length - 1) {
+      return order[idx + 1];
+    }
+    return null;
+  };
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
@@ -104,11 +110,11 @@ export const LeadsPage: React.FC<LeadsPageProps> = ({
               Leads & CRM
             </h1>
             <Badge variant="blue" size="md">
-              {leads.length} Records
+              {leads.length} Real-Time Records
             </Badge>
           </div>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Automated speed-to-lead qualification, buyer intent telemetry, and pipeline tracking.
+            Automated speed-to-lead qualification, buyer intent telemetry, and real-time Firestore pipeline tracking.
           </p>
         </div>
 
@@ -191,10 +197,10 @@ export const LeadsPage: React.FC<LeadsPageProps> = ({
                   <th className="py-3.5 px-4">Contact Info</th>
                   <th className="py-3.5 px-4">Source</th>
                   <th className="py-3.5 px-4">AI Employee</th>
-                  <th className="py-3.5 px-4">Status</th>
-                  <th className="py-3.5 px-4">Lead Score</th>
+                  <th className="py-3.5 px-4">Status / Stage</th>
+                  <th className="py-3.5 px-4">Score</th>
                   <th className="py-3.5 px-4">Last Contact</th>
-                  <th className="py-3.5 px-4">Next Action</th>
+                  <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.04]">
@@ -217,27 +223,24 @@ export const LeadsPage: React.FC<LeadsPageProps> = ({
                       {lead.aiEmployeeName}
                     </td>
                     <td className="py-3.5 px-4">
-                      <Badge
-                        variant={
-                          lead.status === 'won'
-                            ? 'emerald'
-                            : lead.status === 'qualified'
-                            ? 'cyan'
-                            : lead.status === 'proposal'
-                            ? 'violet'
-                            : lead.status === 'contacted'
-                            ? 'blue'
-                            : lead.status === 'lost'
-                            ? 'rose'
-                            : 'slate'
+                      <select
+                        value={lead.status}
+                        onChange={(e) =>
+                          onUpdateLeadStatus &&
+                          onUpdateLeadStatus(lead.id, e.target.value as Lead['status'])
                         }
-                        size="sm"
+                        className="bg-white/[0.05] border border-white/[0.1] text-xs text-white rounded-lg px-2 py-1 focus:outline-none focus:border-cyan-500 capitalize"
                       >
-                        {lead.status}
-                      </Badge>
+                        <option value="new" className="bg-[#0b0f19]">new</option>
+                        <option value="contacted" className="bg-[#0b0f19]">contacted</option>
+                        <option value="qualified" className="bg-[#0b0f19]">qualified</option>
+                        <option value="proposal" className="bg-[#0b0f19]">proposal</option>
+                        <option value="won" className="bg-[#0b0f19]">won</option>
+                        <option value="lost" className="bg-[#0b0f19]">lost</option>
+                      </select>
                     </td>
                     <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1">
                         <span className="font-bold text-cyan-400 text-sm">{lead.leadScore}</span>
                         <span className="text-[10px] text-slate-500">/100</span>
                       </div>
@@ -245,10 +248,18 @@ export const LeadsPage: React.FC<LeadsPageProps> = ({
                     <td className="py-3.5 px-4 text-slate-400 whitespace-nowrap">
                       {lead.lastContact}
                     </td>
-                    <td className="py-3.5 px-4">
-                      <p className="text-xs text-slate-300 max-w-[240px] truncate" title={lead.nextAction}>
-                        {lead.nextAction}
-                      </p>
+                    <td className="py-3.5 px-4 text-right">
+                      <button
+                        onClick={() => {
+                          if (confirm(`Delete lead "${lead.name}"?`)) {
+                            onDeleteLead && onDeleteLead(lead.id);
+                          }
+                        }}
+                        className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                        title="Delete Lead from Firestore"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -269,31 +280,51 @@ export const LeadsPage: React.FC<LeadsPageProps> = ({
                 </div>
 
                 <div className="space-y-3 flex-1">
-                  {stageLeads.map((lead) => (
-                    <div
-                      key={lead.id}
-                      className="card-surface rounded-xl p-4 border border-white/[0.08] hover:border-blue-500/40 transition-all space-y-2.5 shadow-md"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h4 className="text-xs font-bold text-white">{lead.name}</h4>
-                          <p className="text-[10px] text-slate-400">{lead.company}</p>
+                  {stageLeads.map((lead) => {
+                    const next = getNextStage(lead.status);
+                    return (
+                      <div
+                        key={lead.id}
+                        className="card-surface rounded-xl p-4 border border-white/[0.08] hover:border-blue-500/40 transition-all space-y-2.5 shadow-md group"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h4 className="text-xs font-bold text-white">{lead.name}</h4>
+                            <p className="text-[10px] text-slate-400">{lead.company}</p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete lead "${lead.name}"?`)) {
+                                onDeleteLead && onDeleteLead(lead.id);
+                              }
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 transition-opacity"
+                            title="Delete Lead"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                        <span className="text-[10px] font-bold text-cyan-400">
-                          {lead.leadScore}/100
-                        </span>
-                      </div>
 
-                      <div className="text-[11px] text-slate-300 line-clamp-2">
-                        {lead.intent}
-                      </div>
+                        <div className="text-[11px] text-slate-300 line-clamp-2">
+                          {lead.intent}
+                        </div>
 
-                      <div className="pt-2 border-t border-white/[0.04] flex items-center justify-between text-[10px] text-slate-400">
-                        <span>{lead.aiEmployeeName}</span>
-                        <span className="font-semibold text-emerald-400">{lead.estimatedValue || '—'}</span>
+                        <div className="pt-2 border-t border-white/[0.04] flex items-center justify-between text-[10px] text-slate-400">
+                          <span>{lead.aiEmployeeName}</span>
+                          {next && onUpdateLeadStatus && (
+                            <button
+                              onClick={() => onUpdateLeadStatus(lead.id, next)}
+                              className="flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300 font-semibold"
+                              title={`Advance to ${next}`}
+                            >
+                              <span>Next</span>
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -383,7 +414,7 @@ export const LeadsPage: React.FC<LeadsPageProps> = ({
               Cancel
             </Button>
             <Button variant="gradient" size="sm" type="submit">
-              Save & Enroll in Autopilot
+              Save to Firestore
             </Button>
           </div>
         </form>
