@@ -27,8 +27,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user }) => {
     'company' | 'phones' | 'integrations' | 'billing' | 'api'
   >('company');
 
-  const [companyName, setCompanyName] = useState<string>(user.companyName);
-  const [parentOrg, setParentOrg] = useState<string>(user.parentOrg);
+  const [companyName, setCompanyName] = useState<string>(user.companyName || 'Client Care AI');
+  const [parentOrg, setParentOrg] = useState<string>(user.parentOrg || 'Pramanik Group');
   const [apiKeyCopied, setApiKeyCopied] = useState<boolean>(false);
 
   const handleCopyKey = () => {

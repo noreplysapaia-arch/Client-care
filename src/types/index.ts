@@ -1,5 +1,6 @@
 export interface AIEmployee {
   id: string;
+  userId?: string;
   name: string;
   role: string;
   avatar: string;
@@ -22,6 +23,7 @@ export interface AIEmployee {
 
 export interface Lead {
   id: string;
+  userId?: string;
   name: string;
   company: string;
   email: string;
@@ -39,6 +41,7 @@ export interface Lead {
 
 export interface AICall {
   id: string;
+  userId?: string;
   customerName: string;
   customerPhone: string;
   customerCompany: string;
@@ -63,6 +66,7 @@ export interface AICall {
 
 export interface KnowledgeDoc {
   id: string;
+  userId?: string;
   title: string;
   type: 'pdf' | 'docx' | 'txt' | 'url' | 'faq' | 'manual' | 'file';
   status: 'indexed' | 'processing' | 'failed' | 'synced';
@@ -87,6 +91,7 @@ export interface WorkflowStep {
 
 export interface AutomationWorkflow {
   id: string;
+  userId?: string;
   title: string;
   description: string;
   active: boolean;
@@ -98,6 +103,7 @@ export interface AutomationWorkflow {
 
 export interface Appointment {
   id: string;
+  userId?: string;
   title: string;
   customerName: string;
   customerCompany: string;

@@ -5,6 +5,7 @@
       "description": "An autonomous AI employee persona capable of voice and text interactions",
       "type": "object",
       "properties": {
+        "userId": { "type": "string", "description": "Owner user ID" },
         "name": { "type": "string", "description": "Display name of the agent" },
         "role": { "type": "string", "description": "Professional role or function of the agent" },
         "avatar": { "type": "string", "description": "URL to the agent avatar image" },
@@ -24,13 +25,14 @@
         "avgHandlingSec": { "type": "number", "description": "Average duration in seconds" },
         "phoneExtension": { "type": "string", "description": "Dedicated phone extension" }
       },
-      "required": ["name", "role", "status"]
+      "required": ["userId", "name", "role", "status"]
     },
     "Lead": {
       "title": "Lead",
       "description": "A customer or prospect tracked through the CRM pipeline",
       "type": "object",
       "properties": {
+        "userId": { "type": "string", "description": "Owner user ID" },
         "name": { "type": "string", "description": "Prospect full name" },
         "company": { "type": "string", "description": "Prospect company or business" },
         "email": { "type": "string", "description": "Email address" },
@@ -45,13 +47,14 @@
         "nextAction": { "type": "string", "description": "Recommended automated or human next action" },
         "estimatedValue": { "type": "string", "description": "Estimated deal or pipeline value" }
       },
-      "required": ["name", "company", "status"]
+      "required": ["userId", "name", "company", "status"]
     },
     "AICall": {
       "title": "AICall",
       "description": "A logged telephonic or browser voice call handled by an AI Agent",
       "type": "object",
       "properties": {
+        "userId": { "type": "string", "description": "Owner user ID" },
         "customerName": { "type": "string", "description": "Name of the caller or contact" },
         "customerPhone": { "type": "string", "description": "Caller phone number" },
         "customerCompany": { "type": "string", "description": "Caller organization" },
@@ -69,13 +72,14 @@
         "recordingUrl": { "type": "string", "description": "Audio recording URL" },
         "transcript": { "type": "array", "description": "Message turn logs with speaker, text, time" }
       },
-      "required": ["customerName", "aiEmployeeName", "status"]
+      "required": ["userId", "customerName", "aiEmployeeName", "status"]
     },
     "Workflow": {
       "title": "Workflow",
       "description": "Multi-step automated business workflow",
       "type": "object",
       "properties": {
+        "userId": { "type": "string", "description": "Owner user ID" },
         "title": { "type": "string", "description": "Workflow name" },
         "description": { "type": "string", "description": "Purpose and trigger description" },
         "active": { "type": "boolean", "description": "Active state toggle" },
@@ -84,13 +88,14 @@
         "successRate": { "type": "number", "description": "Completion success rate" },
         "steps": { "type": "array", "description": "Ordered nodes in the workflow" }
       },
-      "required": ["title", "active", "trigger"]
+      "required": ["userId", "title", "active", "trigger"]
     },
     "Document": {
       "title": "Document",
       "description": "Company knowledge base document or vector index source",
       "type": "object",
       "properties": {
+        "userId": { "type": "string", "description": "Owner user ID" },
         "title": { "type": "string", "description": "Document or manual title" },
         "type": { "type": "string", "description": "file, url, pdf, faq, docx, txt" },
         "status": { "type": "string", "description": "synced, indexed, processing, failed" },
@@ -102,13 +107,14 @@
         "source": { "type": "string", "description": "URL or filename origin" },
         "category": { "type": "string", "description": "Document category" }
       },
-      "required": ["title", "type", "status"]
+      "required": ["userId", "title", "type", "status"]
     },
     "Appointment": {
       "title": "Appointment",
       "description": "Scheduled meeting or consultation booked by AI",
       "type": "object",
       "properties": {
+        "userId": { "type": "string", "description": "Owner user ID" },
         "title": { "type": "string", "description": "Meeting subject" },
         "customerName": { "type": "string", "description": "Client contact name" },
         "customerCompany": { "type": "string", "description": "Client company" },
@@ -121,7 +127,7 @@
         "type": { "type": "string", "description": "ai-booked, human-booked, follow-up" },
         "meetingLink": { "type": "string", "description": "Virtual meeting room URL" }
       },
-      "required": ["title", "customerName", "date", "time", "status"]
+      "required": ["userId", "title", "customerName", "date", "time", "status"]
     }
   },
   "firestore": {

@@ -21,6 +21,7 @@ import {
   voiceFoundation,
   VoiceDiagnostic,
 } from '../../services/voiceFoundation';
+import { sendAIChatMessage } from '../../services/aiChat';
 
 interface VoiceTestModalProps {
   isOpen: boolean;
@@ -156,7 +157,7 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
   }, [isOpen, agent]);
 
   // Handle user response
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const message = (textToSend || userInput).trim();
     if (!message) return;
 
@@ -169,11 +170,22 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
     setInterimTranscript('');
     setAiState('thinking');
 
-    // Generate contextual agent response
-    setTimeout(() => {
+    try {
+      // Call authenticated backend route /api/chat with Gemini & OpenRouter fallback
+      const aiReply = await sendAIChatMessage(message);
+
+      setTranscript((prev) => [
+        ...prev,
+        { speaker: 'ai', text: aiReply, time: formatTime(callDuration + 2) },
+      ]);
+      speakText(aiReply);
+    } catch (err: any) {
+      console.warn('Backend AI chat note, using fallback response:', err);
       let aiReply = '';
       const lower = message.toLowerCase();
-      if (lower.includes('price') || lower.includes('cost') || lower.includes('package')) {
+      if (err?.message?.includes('Authentication required') || err?.message?.includes('Please sign in')) {
+        aiReply = 'Please sign in to your Client Care account to activate live Gemini & OpenRouter AI inference.';
+      } else if (lower.includes('price') || lower.includes('cost') || lower.includes('package')) {
         aiReply = `Our packages start with a completely free MVP tier to explore. For commercial production with dedicated telephone numbers and unlimited voice minutes, our Growth plan starts at $149 per month. What is your estimated monthly call volume?`;
       } else if (
         lower.includes('demo') ||
@@ -182,22 +194,8 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
         lower.includes('book')
       ) {
         aiReply = `I would be glad to book that for you right now! I have availability tomorrow at 11:00 AM Eastern, or Thursday at 2:00 PM. Which works best for your schedule?`;
-      } else if (
-        lower.includes('security') ||
-        lower.includes('privacy') ||
-        lower.includes('safe') ||
-        lower.includes('pramanik')
-      ) {
-        aiReply = `Client Care is designed with strong data privacy controls, encryption in transit and at rest, and zero data sharing for public AI training.`;
-      } else if (
-        lower.includes('crm') ||
-        lower.includes('integrate') ||
-        lower.includes('salesforce') ||
-        lower.includes('hubspot')
-      ) {
-        aiReply = `Client Care includes a built-in CRM and lead tracker, with webhook support planned for external platforms.`;
       } else {
-        aiReply = `Understood. As your ${agent.role}, I can manage discovery, qualification, and automated follow-ups across all your customer touchpoints. Would you like me to send a summary to your email or book a live walkthrough?`;
+        aiReply = `Understood. As your ${agent.role}, I can manage discovery, qualification, and automated follow-ups across all your customer touchpoints. How else can I assist?`;
       }
 
       setTranscript((prev) => [
@@ -205,7 +203,7 @@ export const VoiceTestModal: React.FC<VoiceTestModalProps> = ({
         { speaker: 'ai', text: aiReply, time: formatTime(callDuration + 2) },
       ]);
       speakText(aiReply);
-    }, 650);
+    }
   };
 
   // Toggle Live Microphone Recognition

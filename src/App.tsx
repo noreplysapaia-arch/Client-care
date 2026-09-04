@@ -19,7 +19,7 @@ import {
 } from './data/mockData';
 import {
   testConnection,
-  seedInitialDataIfEmpty,
+  migrateLocalDataToFirestore,
   subscribeToAgents,
   subscribeToLeads,
   subscribeToCalls,
@@ -42,7 +42,10 @@ import {
   addAppointment,
   updateAppointmentStatus,
   deleteAppointment,
+  onAuthChange,
+  signOutUser,
 } from './services/firebase';
+import { User as FirebaseUser } from 'firebase/auth';
 
 // Landing Page
 import { LandingPage } from './components/landing/LandingPage';
@@ -63,13 +66,19 @@ import { SettingsPage } from './components/settings/SettingsPage';
 import { VoiceTestModal } from './components/voice/VoiceTestModal';
 import { AgentBuilderModal } from './components/agents/AgentBuilderModal';
 import { BanglaVoiceCallModal } from './components/voice/BanglaVoiceCallModal';
+import { AuthModal } from './components/auth/AuthModal';
 import { PhoneCall } from 'lucide-react';
 
 export default function App() {
   // Current active view
   const [currentView, setCurrentView] = useState<AppView>('landing');
 
-  // Core platform states backed by Firestore
+  // Firebase Auth state
+  const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+
+  // Core platform states backed by Firestore (User-isolated)
   const [agents, setAgents] = useState<AIEmployee[]>(initialAIEmployees);
   const [leads, setLeads] = useState<Lead[]>(initialLeads);
   const [calls, setCalls] = useState<AICall[]>(initialCalls);
@@ -91,18 +100,42 @@ export default function App() {
   // AI Employee Builder Modal
   const [isBuilderOpen, setIsBuilderOpen] = useState<boolean>(false);
 
-  // Authenticated user profile
-  const [currentUser] = useState<UserProfile>({
-    name: 'Sajid Pramanik',
-    email: 'sajid@pramanikgroup.com',
+  // Listen to Firebase Authentication changes
+  useEffect(() => {
+    const unsubscribe = onAuthChange((user) => {
+      setAuthUser(user);
+      setIsAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Compute profile from auth user
+  const currentUser: UserProfile = {
+    id: authUser?.uid,
+    name: authUser?.displayName || authUser?.email?.split('@')[0] || 'User',
+    email: authUser?.email || 'authenticated@pramanikgroup.com',
     role: 'Managing Director & Founder',
     companyName: 'Client Care AI',
     parentOrg: 'Pramanik Group',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-  });
+    avatar:
+      authUser?.photoURL ||
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  };
 
-  // Setup Firestore live listeners and bootstrap initial data
+  // STEP 3: Setup Firestore live listeners strictly guarded by authentication
   useEffect(() => {
+    // If user is not authenticated, DO NOT fetch or subscribe to Firestore data!
+    if (!authUser) {
+      // Show default mock templates for landing preview
+      setAgents(initialAIEmployees);
+      setLeads(initialLeads);
+      setCalls(initialCalls);
+      setWorkflows(initialWorkflows);
+      setDocuments(initialDocuments);
+      setAppointments(initialAppointments);
+      return;
+    }
+
     let isMounted = true;
 
     const bootstrapAndSubscribe = async () => {
@@ -110,8 +143,8 @@ export default function App() {
         const isOk = await testConnection();
         if (isMounted) setIsFirestoreConnected(isOk);
 
-        // Seed initial data if collections are empty in Firestore
-        await seedInitialDataIfEmpty({
+        // Migrate and seed user-isolated default dataset if user has no documents yet
+        await migrateLocalDataToFirestore({
           agents: initialAIEmployees,
           leads: initialLeads,
           calls: initialCalls,
@@ -126,44 +159,44 @@ export default function App() {
 
     bootstrapAndSubscribe();
 
-    // 1. Agents onSnapshot listener
+    // 1. Agents onSnapshot listener (strictly filtered by current userId)
     const unsubAgents = subscribeToAgents((liveAgents) => {
-      if (liveAgents && liveAgents.length > 0) {
+      if (liveAgents) {
         setAgents(liveAgents);
       }
     });
 
-    // 2. Leads onSnapshot listener
+    // 2. Leads onSnapshot listener (strictly filtered by current userId)
     const unsubLeads = subscribeToLeads((liveLeads) => {
-      if (liveLeads && liveLeads.length > 0) {
+      if (liveLeads) {
         setLeads(liveLeads);
       }
     });
 
-    // 3. Calls onSnapshot listener
+    // 3. Calls onSnapshot listener (strictly filtered by current userId)
     const unsubCalls = subscribeToCalls((liveCalls) => {
-      if (liveCalls && liveCalls.length > 0) {
+      if (liveCalls) {
         setCalls(liveCalls);
       }
     });
 
-    // 4. Workflows onSnapshot listener
+    // 4. Workflows onSnapshot listener (strictly filtered by current userId)
     const unsubWorkflows = subscribeToWorkflows((liveWorkflows) => {
-      if (liveWorkflows && liveWorkflows.length > 0) {
+      if (liveWorkflows) {
         setWorkflows(liveWorkflows);
       }
     });
 
-    // 5. Knowledge Documents onSnapshot listener
+    // 5. Knowledge Documents onSnapshot listener (strictly filtered by current userId)
     const unsubDocuments = subscribeToDocuments((liveDocuments) => {
-      if (liveDocuments && liveDocuments.length > 0) {
+      if (liveDocuments) {
         setDocuments(liveDocuments);
       }
     });
 
-    // 6. Appointments onSnapshot listener
+    // 6. Appointments onSnapshot listener (strictly filtered by current userId)
     const unsubAppointments = subscribeToAppointments((liveAppointments) => {
-      if (liveAppointments && liveAppointments.length > 0) {
+      if (liveAppointments) {
         setAppointments(liveAppointments);
       }
     });
@@ -177,7 +210,7 @@ export default function App() {
       unsubDocuments();
       unsubAppointments();
     };
-  }, []);
+  }, [authUser]);
 
   // Voice demo handler
   const handleOpenVoiceDemo = (agent?: AIEmployee) => {
@@ -185,9 +218,40 @@ export default function App() {
     setIsVoiceDemoOpen(true);
   };
 
+  // Launch platform or open login
+  const handleEnterPlatform = () => {
+    if (authUser) {
+      setCurrentView('dashboard');
+    } else {
+      setIsAuthModalOpen(true);
+    }
+  };
+
+  // Sign out handler
+  const handleSignOut = async () => {
+    try {
+      await signOutUser();
+    } catch (err) {
+      console.error('Sign out error:', err);
+    }
+    setCurrentView('landing');
+  };
+
+  // Safe navigation with Auth Guard
+  const handleNavigate = (view: AppView) => {
+    if (view !== 'landing' && !authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+    setCurrentView(view);
+  };
+
   // Agent CRUD
   const handleAgentCreated = async (newAgent: AIEmployee) => {
-    // Optimistic local update
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setAgents((prev) => [newAgent, ...prev]);
     try {
       await addAgent(newAgent);
@@ -197,6 +261,10 @@ export default function App() {
   };
 
   const handleToggleAgentStatus = async (agentId: string) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     const target = agents.find((a) => a.id === agentId);
     if (!target) return;
     const nextStatus = target.status === 'active' ? 'paused' : 'active';
@@ -211,6 +279,10 @@ export default function App() {
   };
 
   const handleDeleteAgent = async (agentId: string) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setAgents((prev) => prev.filter((a) => a.id !== agentId));
     try {
       await deleteAgent(agentId);
@@ -221,6 +293,10 @@ export default function App() {
 
   // Lead CRUD
   const handleAddLead = async (newLead: Lead) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setLeads((prev) => [newLead, ...prev]);
     try {
       await addLead(newLead);
@@ -230,6 +306,10 @@ export default function App() {
   };
 
   const handleUpdateLeadStatus = async (leadId: string, newStatus: Lead['status']) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setLeads((prev) =>
       prev.map((l) => (l.id === leadId ? { ...l, status: newStatus } : l))
     );
@@ -241,6 +321,10 @@ export default function App() {
   };
 
   const handleDeleteLead = async (leadId: string) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setLeads((prev) => prev.filter((l) => l.id !== leadId));
     try {
       await deleteLead(leadId);
@@ -251,6 +335,10 @@ export default function App() {
 
   // Calls CRUD
   const handleDeleteCall = async (callId: string) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setCalls((prev) => prev.filter((c) => c.id !== callId));
     try {
       await deleteCall(callId);
@@ -261,6 +349,10 @@ export default function App() {
 
   // Workflow CRUD
   const handleToggleWorkflow = async (wfId: string) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     const target = workflows.find((w) => w.id === wfId);
     if (!target) return;
     const nextActive = !target.active;
@@ -275,6 +367,10 @@ export default function App() {
   };
 
   const handleAddWorkflow = async (newWf: AutomationWorkflow) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setWorkflows((prev) => [newWf, ...prev]);
     try {
       await addWorkflow(newWf);
@@ -284,6 +380,10 @@ export default function App() {
   };
 
   const handleUpdateWorkflow = async (wfId: string, data: Partial<AutomationWorkflow>) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setWorkflows((prev) =>
       prev.map((w) => (w.id === wfId ? { ...w, ...data } : w))
     );
@@ -295,6 +395,10 @@ export default function App() {
   };
 
   const handleDeleteWorkflow = async (wfId: string) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setWorkflows((prev) => prev.filter((w) => w.id !== wfId));
     try {
       await deleteWorkflow(wfId);
@@ -305,6 +409,10 @@ export default function App() {
 
   // Knowledge Document CRUD
   const handleAddDocument = async (newDoc: KnowledgeDocument) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setDocuments((prev) => [newDoc, ...prev]);
     try {
       await addDocument(newDoc);
@@ -314,6 +422,10 @@ export default function App() {
   };
 
   const handleDeleteDocument = async (docId: string) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setDocuments((prev) => prev.filter((d) => d.id !== docId));
     try {
       await deleteDocument(docId);
@@ -324,6 +436,10 @@ export default function App() {
 
   // Appointment CRUD
   const handleAddAppointment = async (newApt: Appointment) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setAppointments((prev) => [newApt, ...prev]);
     try {
       await addAppointment(newApt);
@@ -333,6 +449,10 @@ export default function App() {
   };
 
   const handleUpdateAppointmentStatus = async (aptId: string, status: Appointment['status']) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setAppointments((prev) =>
       prev.map((a) => (a.id === aptId ? { ...a, status } : a))
     );
@@ -344,6 +464,10 @@ export default function App() {
   };
 
   const handleDeleteAppointment = async (aptId: string) => {
+    if (!authUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
     setAppointments((prev) => prev.filter((a) => a.id !== aptId));
     try {
       await deleteAppointment(aptId);
@@ -353,14 +477,21 @@ export default function App() {
   };
 
   // Render view
-  if (currentView === 'landing') {
+  if (currentView === 'landing' || (!authUser && !isAuthLoading)) {
     return (
       <>
         <LandingPage
-          onGetStarted={() => setCurrentView('dashboard')}
-          onLogin={() => setCurrentView('dashboard')}
+          onGetStarted={handleEnterPlatform}
+          onLogin={() => setIsAuthModalOpen(true)}
           onOpenVoiceDemo={() => handleOpenVoiceDemo()}
           onTestAgent={(agent) => handleOpenVoiceDemo(agent)}
+        />
+
+        {/* Global Auth Modal */}
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          onSuccess={() => setCurrentView('dashboard')}
         />
 
         {/* Global Voice Test Modal */}
@@ -405,11 +536,11 @@ export default function App() {
   return (
     <AppLayout
       currentView={currentView}
-      onNavigate={(view) => setCurrentView(view)}
+      onNavigate={handleNavigate}
       user={currentUser}
       onOpenBuilder={() => setIsBuilderOpen(true)}
       onOpenVoiceDemo={() => handleOpenVoiceDemo()}
-      onSignOut={() => setCurrentView('landing')}
+      onSignOut={handleSignOut}
       firestoreLive={isFirestoreConnected}
     >
       {/* View Switcher */}
@@ -418,7 +549,7 @@ export default function App() {
           agents={agents}
           leads={leads}
           calls={calls}
-          onNavigate={(view) => setCurrentView(view)}
+          onNavigate={handleNavigate}
           onOpenVoiceDemo={() => handleOpenVoiceDemo()}
           onSelectCall={(call) => {
             setSelectedCall(call);
@@ -500,6 +631,13 @@ export default function App() {
       {currentView === 'analytics' && <AnalyticsPage />}
 
       {currentView === 'settings' && <SettingsPage user={currentUser} />}
+
+      {/* Global Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={() => setCurrentView('dashboard')}
+      />
 
       {/* Global Voice Test Modal */}
       <VoiceTestModal

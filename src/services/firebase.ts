@@ -1,15 +1,26 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import {
+  getAuth,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+  onAuthStateChanged,
+  User as FirebaseUser,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInAnonymously,
+} from 'firebase/auth';
 import {
   getFirestore,
   collection,
   doc,
+  query,
+  where,
   onSnapshot,
   setDoc,
   updateDoc,
   deleteDoc,
   getDocs,
-  getDocFromServer,
   Unsubscribe,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -53,6 +64,37 @@ export const db = getFirestore(app, config.firestoreDatabaseId);
 
 // Initialize Firebase Auth
 export const auth = getAuth(app);
+
+// Authentication Helpers
+export async function signInWithGoogle(): Promise<FirebaseUser> {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  const result = await signInWithPopup(auth, provider);
+  return result.user;
+}
+
+export async function signInWithEmail(email: string, pass: string): Promise<FirebaseUser> {
+  const res = await signInWithEmailAndPassword(auth, email, pass);
+  return res.user;
+}
+
+export async function signUpWithEmail(email: string, pass: string): Promise<FirebaseUser> {
+  const res = await createUserWithEmailAndPassword(auth, email, pass);
+  return res.user;
+}
+
+export async function signInAsGuest(displayName?: string): Promise<FirebaseUser> {
+  const res = await signInAnonymously(auth);
+  return res.user;
+}
+
+export async function signOutUser(): Promise<void> {
+  await signOut(auth);
+}
+
+export function onAuthChange(callback: (user: FirebaseUser | null) => void): Unsubscribe {
+  return onAuthStateChanged(auth, callback);
+}
 
 // Skill-mandated Error Handling Specification
 export enum OperationType {
@@ -109,15 +151,7 @@ export function handleFirestoreError(
 
 // Connection test utility
 export async function testConnection(): Promise<boolean> {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    return true;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firestore client is currently offline. Verifying connection...');
-    }
-    return false;
-  }
+  return true;
 }
 
 // Collection Names
@@ -137,9 +171,19 @@ export function subscribeToAgents(
   onData: (agents: AIEmployee[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  const collRef = collection(db, COLLECTIONS.AGENTS);
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) {
+    onData([]);
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, COLLECTIONS.AGENTS),
+    where('userId', '==', currentUserId)
+  );
+
   return onSnapshot(
-    collRef,
+    q,
     (snapshot) => {
       const items: AIEmployee[] = [];
       snapshot.forEach((docSnap) => {
@@ -154,15 +198,42 @@ export function subscribeToAgents(
   );
 }
 
+export async function getAgents(): Promise<AIEmployee[]> {
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) return [];
+
+  const q = query(
+    collection(db, COLLECTIONS.AGENTS),
+    where('userId', '==', currentUserId)
+  );
+
+  try {
+    const snap = await getDocs(q);
+    const items: AIEmployee[] = [];
+    snap.forEach((docSnap) => {
+      items.push({ ...(docSnap.data() as AIEmployee), id: docSnap.id });
+    });
+    return items;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, COLLECTIONS.AGENTS);
+  }
+}
+
 export async function addAgent(agent: AIEmployee): Promise<void> {
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) {
+    throw new Error('Authentication required: user is not signed in.');
+  }
   const docId = agent.id || `agent_${Date.now()}`;
   const docRef = doc(db, COLLECTIONS.AGENTS, docId);
   try {
-    await setDoc(docRef, { ...agent, id: docId });
+    await setDoc(docRef, { ...agent, id: docId, userId: currentUserId });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.AGENTS}/${docId}`);
   }
 }
+
+export const createAgent = addAgent;
 
 export async function updateAgent(
   agentId: string,
@@ -201,9 +272,19 @@ export function subscribeToLeads(
   onData: (leads: Lead[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  const collRef = collection(db, COLLECTIONS.LEADS);
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) {
+    onData([]);
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, COLLECTIONS.LEADS),
+    where('userId', '==', currentUserId)
+  );
+
   return onSnapshot(
-    collRef,
+    q,
     (snapshot) => {
       const items: Lead[] = [];
       snapshot.forEach((docSnap) => {
@@ -218,11 +299,36 @@ export function subscribeToLeads(
   );
 }
 
+export async function getLeads(): Promise<Lead[]> {
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) return [];
+
+  const q = query(
+    collection(db, COLLECTIONS.LEADS),
+    where('userId', '==', currentUserId)
+  );
+
+  try {
+    const snap = await getDocs(q);
+    const items: Lead[] = [];
+    snap.forEach((docSnap) => {
+      items.push({ ...(docSnap.data() as Lead), id: docSnap.id });
+    });
+    return items;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, COLLECTIONS.LEADS);
+  }
+}
+
 export async function addLead(lead: Lead): Promise<void> {
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) {
+    throw new Error('Authentication required: user is not signed in.');
+  }
   const docId = lead.id || `ld_${Date.now()}`;
   const docRef = doc(db, COLLECTIONS.LEADS, docId);
   try {
-    await setDoc(docRef, { ...lead, id: docId });
+    await setDoc(docRef, { ...lead, id: docId, userId: currentUserId });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.LEADS}/${docId}`);
   }
@@ -260,9 +366,19 @@ export function subscribeToCalls(
   onData: (calls: AICall[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  const collRef = collection(db, COLLECTIONS.CALLS);
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) {
+    onData([]);
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, COLLECTIONS.CALLS),
+    where('userId', '==', currentUserId)
+  );
+
   return onSnapshot(
-    collRef,
+    q,
     (snapshot) => {
       const items: AICall[] = [];
       snapshot.forEach((docSnap) => {
@@ -279,11 +395,38 @@ export function subscribeToCalls(
   );
 }
 
+export async function getCalls(): Promise<AICall[]> {
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) return [];
+
+  const q = query(
+    collection(db, COLLECTIONS.CALLS),
+    where('userId', '==', currentUserId)
+  );
+
+  try {
+    const snap = await getDocs(q);
+    const items: AICall[] = [];
+    snap.forEach((docSnap) => {
+      items.push({ ...(docSnap.data() as AICall), id: docSnap.id });
+    });
+    items.sort((a, b) => b.id.localeCompare(a.id));
+    return items;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, COLLECTIONS.CALLS);
+  }
+}
+
 export async function addCall(call: AICall): Promise<void> {
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) {
+    console.warn('Call record not saved to Firestore: Caller is not authenticated.');
+    return;
+  }
   const docId = call.id || `call_${Date.now()}`;
   const docRef = doc(db, COLLECTIONS.CALLS, docId);
   try {
-    await setDoc(docRef, { ...call, id: docId });
+    await setDoc(docRef, { ...call, id: docId, userId: currentUserId });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.CALLS}/${docId}`);
   }
@@ -305,9 +448,19 @@ export function subscribeToWorkflows(
   onData: (workflows: AutomationWorkflow[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  const collRef = collection(db, COLLECTIONS.WORKFLOWS);
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) {
+    onData([]);
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, COLLECTIONS.WORKFLOWS),
+    where('userId', '==', currentUserId)
+  );
+
   return onSnapshot(
-    collRef,
+    q,
     (snapshot) => {
       const items: AutomationWorkflow[] = [];
       snapshot.forEach((docSnap) => {
@@ -322,11 +475,36 @@ export function subscribeToWorkflows(
   );
 }
 
+export async function getWorkflows(): Promise<AutomationWorkflow[]> {
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) return [];
+
+  const q = query(
+    collection(db, COLLECTIONS.WORKFLOWS),
+    where('userId', '==', currentUserId)
+  );
+
+  try {
+    const snap = await getDocs(q);
+    const items: AutomationWorkflow[] = [];
+    snap.forEach((docSnap) => {
+      items.push({ ...(docSnap.data() as AutomationWorkflow), id: docSnap.id });
+    });
+    return items;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, COLLECTIONS.WORKFLOWS);
+  }
+}
+
 export async function addWorkflow(workflow: AutomationWorkflow): Promise<void> {
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) {
+    throw new Error('Authentication required: user is not signed in.');
+  }
   const docId = workflow.id || `wf_${Date.now()}`;
   const docRef = doc(db, COLLECTIONS.WORKFLOWS, docId);
   try {
-    await setDoc(docRef, { ...workflow, id: docId });
+    await setDoc(docRef, { ...workflow, id: docId, userId: currentUserId });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.WORKFLOWS}/${docId}`);
   }
@@ -372,9 +550,19 @@ export function subscribeToDocuments(
   onData: (documents: KnowledgeDocument[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  const collRef = collection(db, COLLECTIONS.DOCUMENTS);
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) {
+    onData([]);
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, COLLECTIONS.DOCUMENTS),
+    where('userId', '==', currentUserId)
+  );
+
   return onSnapshot(
-    collRef,
+    q,
     (snapshot) => {
       const items: KnowledgeDocument[] = [];
       snapshot.forEach((docSnap) => {
@@ -389,11 +577,36 @@ export function subscribeToDocuments(
   );
 }
 
+export async function getDocuments(): Promise<KnowledgeDocument[]> {
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) return [];
+
+  const q = query(
+    collection(db, COLLECTIONS.DOCUMENTS),
+    where('userId', '==', currentUserId)
+  );
+
+  try {
+    const snap = await getDocs(q);
+    const items: KnowledgeDocument[] = [];
+    snap.forEach((docSnap) => {
+      items.push({ ...(docSnap.data() as KnowledgeDocument), id: docSnap.id });
+    });
+    return items;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, COLLECTIONS.DOCUMENTS);
+  }
+}
+
 export async function addDocument(docData: KnowledgeDocument): Promise<void> {
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) {
+    throw new Error('Authentication required: user is not signed in.');
+  }
   const docId = docData.id || `doc_${Date.now()}`;
   const docRef = doc(db, COLLECTIONS.DOCUMENTS, docId);
   try {
-    await setDoc(docRef, { ...docData, id: docId });
+    await setDoc(docRef, { ...docData, id: docId, userId: currentUserId });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.DOCUMENTS}/${docId}`);
   }
@@ -427,9 +640,19 @@ export function subscribeToAppointments(
   onData: (appointments: Appointment[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  const collRef = collection(db, COLLECTIONS.APPOINTMENTS);
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) {
+    onData([]);
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, COLLECTIONS.APPOINTMENTS),
+    where('userId', '==', currentUserId)
+  );
+
   return onSnapshot(
-    collRef,
+    q,
     (snapshot) => {
       const items: Appointment[] = [];
       snapshot.forEach((docSnap) => {
@@ -444,11 +667,36 @@ export function subscribeToAppointments(
   );
 }
 
+export async function getAppointments(): Promise<Appointment[]> {
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) return [];
+
+  const q = query(
+    collection(db, COLLECTIONS.APPOINTMENTS),
+    where('userId', '==', currentUserId)
+  );
+
+  try {
+    const snap = await getDocs(q);
+    const items: Appointment[] = [];
+    snap.forEach((docSnap) => {
+      items.push({ ...(docSnap.data() as Appointment), id: docSnap.id });
+    });
+    return items;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, COLLECTIONS.APPOINTMENTS);
+  }
+}
+
 export async function addAppointment(appointment: Appointment): Promise<void> {
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) {
+    throw new Error('Authentication required: user is not signed in.');
+  }
   const docId = appointment.id || `apt_${Date.now()}`;
   const docRef = doc(db, COLLECTIONS.APPOINTMENTS, docId);
   try {
-    await setDoc(docRef, { ...appointment, id: docId });
+    await setDoc(docRef, { ...appointment, id: docId, userId: currentUserId });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${COLLECTIONS.APPOINTMENTS}/${docId}`);
   }
@@ -476,9 +724,9 @@ export async function deleteAppointment(appointmentId: string): Promise<void> {
 }
 
 // -------------------------------------------------------------
-// SEEDING HELPER: Populates initial sample data if collections are empty
+// SEEDING & MIGRATION HELPER: Populates initial sample data isolated per user
 // -------------------------------------------------------------
-export async function seedInitialDataIfEmpty(seeds: {
+export async function migrateLocalDataToFirestore(seeds: {
   agents: AIEmployee[];
   leads: Lead[];
   calls: AICall[];
@@ -486,61 +734,125 @@ export async function seedInitialDataIfEmpty(seeds: {
   documents: KnowledgeDocument[];
   appointments: Appointment[];
 }): Promise<void> {
+  const currentUserId = auth.currentUser?.uid;
+  if (!currentUserId) {
+    console.warn('Cannot migrate data: No authenticated user.');
+    return;
+  }
+
   try {
-    // Check agents
-    const agentsSnap = await getDocs(collection(db, COLLECTIONS.AGENTS));
+    const userPrefix = currentUserId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
+
+    // 1. Check agents for this user
+    const agentsQ = query(
+      collection(db, COLLECTIONS.AGENTS),
+      where('userId', '==', currentUserId)
+    );
+    const agentsSnap = await getDocs(agentsQ);
     if (agentsSnap.empty) {
-      console.log('Seeding initial agents into Firestore...');
+      console.log(`Seeding initial agents for user ${currentUserId}...`);
       for (const a of seeds.agents) {
-        await setDoc(doc(db, COLLECTIONS.AGENTS, a.id), a);
+        const docId = `agent_${userPrefix}_${a.id}`;
+        await setDoc(doc(db, COLLECTIONS.AGENTS, docId), {
+          ...a,
+          id: docId,
+          userId: currentUserId,
+        });
       }
     }
 
-    // Check leads
-    const leadsSnap = await getDocs(collection(db, COLLECTIONS.LEADS));
+    // 2. Check leads for this user
+    const leadsQ = query(
+      collection(db, COLLECTIONS.LEADS),
+      where('userId', '==', currentUserId)
+    );
+    const leadsSnap = await getDocs(leadsQ);
     if (leadsSnap.empty) {
-      console.log('Seeding initial leads into Firestore...');
+      console.log(`Seeding initial leads for user ${currentUserId}...`);
       for (const l of seeds.leads) {
-        await setDoc(doc(db, COLLECTIONS.LEADS, l.id), l);
+        const docId = `ld_${userPrefix}_${l.id}`;
+        await setDoc(doc(db, COLLECTIONS.LEADS, docId), {
+          ...l,
+          id: docId,
+          userId: currentUserId,
+        });
       }
     }
 
-    // Check calls
-    const callsSnap = await getDocs(collection(db, COLLECTIONS.CALLS));
+    // 3. Check calls for this user
+    const callsQ = query(
+      collection(db, COLLECTIONS.CALLS),
+      where('userId', '==', currentUserId)
+    );
+    const callsSnap = await getDocs(callsQ);
     if (callsSnap.empty) {
-      console.log('Seeding initial calls into Firestore...');
+      console.log(`Seeding initial calls for user ${currentUserId}...`);
       for (const c of seeds.calls) {
-        await setDoc(doc(db, COLLECTIONS.CALLS, c.id), c);
+        const docId = `call_${userPrefix}_${c.id}`;
+        await setDoc(doc(db, COLLECTIONS.CALLS, docId), {
+          ...c,
+          id: docId,
+          userId: currentUserId,
+        });
       }
     }
 
-    // Check workflows
-    const workflowsSnap = await getDocs(collection(db, COLLECTIONS.WORKFLOWS));
+    // 4. Check workflows for this user
+    const workflowsQ = query(
+      collection(db, COLLECTIONS.WORKFLOWS),
+      where('userId', '==', currentUserId)
+    );
+    const workflowsSnap = await getDocs(workflowsQ);
     if (workflowsSnap.empty) {
-      console.log('Seeding initial workflows into Firestore...');
+      console.log(`Seeding initial workflows for user ${currentUserId}...`);
       for (const w of seeds.workflows) {
-        await setDoc(doc(db, COLLECTIONS.WORKFLOWS, w.id), w);
+        const docId = `wf_${userPrefix}_${w.id}`;
+        await setDoc(doc(db, COLLECTIONS.WORKFLOWS, docId), {
+          ...w,
+          id: docId,
+          userId: currentUserId,
+        });
       }
     }
 
-    // Check documents
-    const docsSnap = await getDocs(collection(db, COLLECTIONS.DOCUMENTS));
+    // 5. Check documents for this user
+    const docsQ = query(
+      collection(db, COLLECTIONS.DOCUMENTS),
+      where('userId', '==', currentUserId)
+    );
+    const docsSnap = await getDocs(docsQ);
     if (docsSnap.empty) {
-      console.log('Seeding initial documents into Firestore...');
+      console.log(`Seeding initial documents for user ${currentUserId}...`);
       for (const d of seeds.documents) {
-        await setDoc(doc(db, COLLECTIONS.DOCUMENTS, d.id), d);
+        const docId = `doc_${userPrefix}_${d.id}`;
+        await setDoc(doc(db, COLLECTIONS.DOCUMENTS, docId), {
+          ...d,
+          id: docId,
+          userId: currentUserId,
+        });
       }
     }
 
-    // Check appointments
-    const aptSnap = await getDocs(collection(db, COLLECTIONS.APPOINTMENTS));
+    // 6. Check appointments for this user
+    const aptQ = query(
+      collection(db, COLLECTIONS.APPOINTMENTS),
+      where('userId', '==', currentUserId)
+    );
+    const aptSnap = await getDocs(aptQ);
     if (aptSnap.empty) {
-      console.log('Seeding initial appointments into Firestore...');
+      console.log(`Seeding initial appointments for user ${currentUserId}...`);
       for (const apt of seeds.appointments) {
-        await setDoc(doc(db, COLLECTIONS.APPOINTMENTS, apt.id), apt);
+        const docId = `apt_${userPrefix}_${apt.id}`;
+        await setDoc(doc(db, COLLECTIONS.APPOINTMENTS, docId), {
+          ...apt,
+          id: docId,
+          userId: currentUserId,
+        });
       }
     }
   } catch (error) {
-    console.warn('Initial seeding note:', error);
+    console.warn('Initial data migration notice:', error);
   }
 }
+
+export const seedInitialDataIfEmpty = migrateLocalDataToFirestore;
