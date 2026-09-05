@@ -11,19 +11,25 @@ export interface AIChatResponse {
  */
 export async function sendAIChatMessage(message: string): Promise<string> {
   const currentUser = auth.currentUser;
-  if (!currentUser) {
-    throw new Error('Authentication required: Please sign in to interact with the AI Employee.');
+  let idToken: string | null = null;
+  if (currentUser) {
+    try {
+      idToken = await currentUser.getIdToken(false);
+    } catch (e) {
+      console.debug('Could not get fresh token:', e);
+    }
   }
 
-  // Obtain fresh Firebase Auth ID token
-  const idToken = await currentUser.getIdToken(false);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (idToken) {
+    headers['Authorization'] = `Bearer ${idToken}`;
+  }
 
   const res = await fetch('/api/chat', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${idToken}`,
-    },
+    headers,
     body: JSON.stringify({ message }),
   });
 

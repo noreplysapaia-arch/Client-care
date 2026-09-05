@@ -64,36 +64,56 @@ async function startServer() {
     });
   });
 
-  // Authenticated AI Chat Route
+  // ElevenLabs Signed URL endpoint (for secure private agent access if API key is configured)
+  app.get('/api/elevenlabs/signed-url', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const apiKey = process.env.ELEVENLABS_API_KEY || process.env.XI_API_KEY;
+      const agentId = (req.query.agent_id as string) || process.env.ELEVENLABS_AGENT_ID || 'agent_5601m1p2507mf4e83sthvkkepmbx';
+
+      if (!apiKey || apiKey.trim() === '' || apiKey.includes('placeholder')) {
+        res.status(200).json({ signedUrl: null, reason: 'no_api_key' });
+        return;
+      }
+
+      const response = await fetch(
+        `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${encodeURIComponent(agentId)}`,
+        {
+          method: 'GET',
+          headers: {
+            'xi-api-key': apiKey.trim(),
+          },
+        }
+      );
+
+      if (!response.ok) {
+        // If API key is invalid or unauthorized, return signedUrl: null cleanly without console errors
+        res.status(200).json({ signedUrl: null, status: response.status });
+        return;
+      }
+
+      const data: any = await response.json();
+      res.json({ signedUrl: data.signed_url || null });
+    } catch {
+      res.status(200).json({ signedUrl: null });
+    }
+  });
+
+  // AI Chat Route (Supports both authenticated users & inbound callers)
   app.post('/api/chat', async (req: Request, res: Response): Promise<void> => {
     try {
-      // 1. Verify Authorization Header
+      let callerUid = 'guest_caller';
       const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        res.status(401).json({
-          error: 'Unauthorized: Missing or invalid Bearer token in Authorization header.',
-        });
-        return;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const idToken = authHeader.split('Bearer ')[1]?.trim();
+        if (idToken) {
+          const authUser = await verifyFirebaseIdToken(idToken);
+          if (authUser?.uid) {
+            callerUid = authUser.uid;
+          }
+        }
       }
 
-      const idToken = authHeader.split('Bearer ')[1]?.trim();
-      if (!idToken) {
-        res.status(401).json({
-          error: 'Unauthorized: Firebase ID token is required.',
-        });
-        return;
-      }
-
-      // 2. Validate Firebase ID Token and extract user UID
-      const authUser = await verifyFirebaseIdToken(idToken);
-      if (!authUser || !authUser.uid) {
-        res.status(401).json({
-          error: 'Unauthorized: Invalid or expired Firebase ID token.',
-        });
-        return;
-      }
-
-      // 3. Extract user message
+      // Extract user message
       const userMessage = req.body?.message || req.body?.userMessage;
       if (!userMessage || typeof userMessage !== 'string' || !userMessage.trim()) {
         res.status(400).json({
@@ -102,14 +122,14 @@ async function startServer() {
         return;
       }
 
-      console.log(`[AI Chat] Received query from user UID: ${authUser.uid}`);
+      console.log(`[AI Chat] Received query from caller: ${callerUid}`);
 
-      // 4. Generate AI response using aiProvider (Gemini -> OpenRouter fallbacks)
+      // Generate AI response using aiProvider (Gemini -> OpenRouter fallbacks)
       const aiReply = await getAIResponse(userMessage.trim());
 
       res.json({
         reply: aiReply,
-        uid: authUser.uid,
+        uid: callerUid,
         timestamp: new Date().toISOString(),
       });
     } catch (err: any) {

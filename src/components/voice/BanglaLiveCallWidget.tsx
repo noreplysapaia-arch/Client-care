@@ -12,6 +12,9 @@ import {
   Send,
   Headphones,
   Search,
+  AlertCircle,
+  Sparkles,
+  Radio,
 } from 'lucide-react';
 import { Conversation } from '@elevenlabs/client';
 import { playBangladeshiRingback, RingbackController } from '../../services/ringbackToneService';
@@ -26,11 +29,15 @@ import { VoiceWaveform } from '../ui/VoiceWaveform';
 import { addCall } from '../../services/firebase';
 import { AICall } from '../../types';
 import { COUNTRIES, DEFAULT_COUNTRY, CountryCode } from '../../data/countryCodes';
+import { sendAIChatMessage } from '../../services/aiChat';
 
 // ElevenLabs Agent Configuration
 const ELEVENLABS_AGENT_ID =
   (import.meta.env.VITE_ELEVENLABS_AGENT_ID as string) ||
   'agent_5601m1p2507mf4e83sthvkkepmbx';
+
+const FIRST_AGENT_MESSAGE =
+  'আসসালামু আলাইকুম! আমি সারাহ বলছি, Client Care থেকে। অনুগ্রহ করে জানাবেন আপনাকে কিভাবে সহযোগিতা করতে পারি?';
 
 interface BanglaLiveCallWidgetProps {
   initialName?: string;
@@ -102,6 +109,11 @@ export const BanglaLiveCallWidget: React.FC<BanglaLiveCallWidgetProps> = ({
   const [callStatus, setCallStatus] = useState<'idle' | 'ringing' | 'connected'>('idle');
   const [callDuration, setCallDuration] = useState<number>(0);
 
+  // Voice Engine State
+  const [activeEngine, setActiveEngine] = useState<'elevenlabs' | 'browser'>('elevenlabs');
+  const [engineNotice, setEngineNotice] = useState<string | null>(null);
+  const [isProcessingAI, setIsProcessingAI] = useState<boolean>(false);
+
   // Audio controls
   const [isSpeakerOn, setIsSpeakerOn] = useState<boolean>(true);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
@@ -110,9 +122,25 @@ export const BanglaLiveCallWidget: React.FC<BanglaLiveCallWidgetProps> = ({
   const [micAudioLevel, setMicAudioLevel] = useState<number>(0);
   const [micFrequencyData, setMicFrequencyData] = useState<Uint8Array | undefined>(undefined);
 
+  // State refs to eliminate stale closure issues in audio callbacks
+  const callStatusRef = useRef<'idle' | 'ringing' | 'connected'>(callStatus);
+  callStatusRef.current = callStatus;
+
+  const callDurationRef = useRef<number>(callDuration);
+  callDurationRef.current = callDuration;
+
+  const isSpeakingRef = useRef<boolean>(isSpeaking);
+  isSpeakingRef.current = isSpeaking;
+
+  const activeEngineRef = useRef<'elevenlabs' | 'browser'>(activeEngine);
+  activeEngineRef.current = activeEngine;
+
   // Bangladeshi Ringback & ElevenLabs Session references
   const ringbackRef = useRef<RingbackController | null>(null);
   const elevenLabsSessionRef = useRef<any>(null);
+
+  // Engine preference: 'auto' (tries ElevenLabs first) or 'browser' (direct Smart Voice)
+  const [enginePreference, setEnginePreference] = useState<'auto' | 'browser'>('auto');
 
   // Selected persona
   const [selectedVoice, setSelectedVoice] = useState<BanglaVoicePersona>(BANGLA_VOICES[0]);
@@ -168,8 +196,11 @@ export const BanglaLiveCallWidget: React.FC<BanglaLiveCallWidgetProps> = ({
   };
 
   // Trigger AI Speech Output (used for local replay or fallback)
-  const speakAI = (text: string) => {
-    if (!isSpeakerOn) return;
+  const speakAI = (text: string, onDone?: () => void) => {
+    if (!isSpeakerOn) {
+      if (onDone) onDone();
+      return;
+    }
 
     setIsSpeaking(true);
     banglaVoice.playBanglaSpeech(
@@ -180,19 +211,170 @@ export const BanglaLiveCallWidget: React.FC<BanglaLiveCallWidgetProps> = ({
       },
       () => {
         setIsSpeaking(false);
+        if (onDone) onDone();
       },
       () => {
         setIsSpeaking(false);
+        if (onDone) onDone();
       }
     );
+  };
+
+  // Auto-listen microphone after AI finishes speaking in browser mode
+  const startAutoMicListening = async () => {
+    if (callStatusRef.current !== 'connected' || isSpeakingRef.current) return;
+
+    banglaVoice.stopSpeaking();
+
+    // Start mic monitoring for waveform feedback
+    await voiceFoundation.startMicMonitoring((level, spectrum) => {
+      setMicAudioLevel(level);
+      setMicFrequencyData(spectrum);
+    });
+
+    voiceFoundation.startListening({
+      lang: 'bn-BD',
+      interimResults: true,
+      onStart: () => {
+        setIsListeningMic(true);
+      },
+      onInterim: (text) => {
+        setInterimSpokenText(text);
+      },
+      onFinal: (spokenText) => {
+        setIsListeningMic(false);
+        setInterimSpokenText('');
+        voiceFoundation.stopMicMonitoring();
+        setMicAudioLevel(0);
+        setMicFrequencyData(undefined);
+        if (spokenText.trim()) {
+          handleUserMessage(spokenText.trim());
+        }
+      },
+      onError: (err) => {
+        console.debug('Mic listen notice:', err);
+        setIsListeningMic(false);
+        setInterimSpokenText('');
+        voiceFoundation.stopMicMonitoring();
+        setMicAudioLevel(0);
+        setMicFrequencyData(undefined);
+      },
+      onEnd: () => {
+        setIsListeningMic(false);
+        voiceFoundation.stopMicMonitoring();
+        setMicAudioLevel(0);
+        setMicFrequencyData(undefined);
+      },
+    });
+  };
+
+  // Connects to Smart AI Voice Engine (Built-in Web Speech + Gemini AI)
+  // Ensures a call NEVER disconnects or drops silently
+  const connectSmartVoiceAgent = (noticeReason?: string) => {
+    // 1. Stop Ringback Tone
+    if (ringbackRef.current) {
+      ringbackRef.current.stop();
+      ringbackRef.current = null;
+    }
+
+    // Guard: If already connected via browser voice, do not re-trigger greetings or audio
+    if (activeEngineRef.current === 'browser' && callStatusRef.current === 'connected') {
+      if (noticeReason) {
+        setEngineNotice(noticeReason);
+      }
+      return;
+    }
+
+    // Immediately set activeEngineRef to 'browser' so any ElevenLabs disconnect events are ignored
+    setActiveEngine('browser');
+    activeEngineRef.current = 'browser';
+
+    if (elevenLabsSessionRef.current) {
+      try {
+        const session = elevenLabsSessionRef.current;
+        elevenLabsSessionRef.current = null;
+        session.endSession().catch(() => {});
+      } catch {}
+    }
+
+    setCallStatus('connected');
+    callStatusRef.current = 'connected';
+    if (noticeReason) {
+      setEngineNotice(noticeReason);
+    }
+    banglaVoice.playConnectedChime();
+
+    const cleanName = fullName.trim().split(' ')[0];
+    const greetingText = cleanName
+      ? `আসসালামু আলাইকুম ${cleanName}! আমি সারাহ বলছি, Client Care থেকে। অনুগ্রহ করে জানাবেন আপনাকে কিভাবে সহযোগিতা করতে পারি?`
+      : FIRST_AGENT_MESSAGE;
+
+    setTranscript((prev) =>
+      prev.length === 0
+        ? [
+            {
+              id: `msg_${Date.now()}`,
+              speaker: 'ai' as const,
+              text: greetingText,
+              time: '00:01',
+            },
+          ]
+        : prev
+    );
+
+    // Speak greeting using selected persona, then activate microphone automatically
+    speakAI(greetingText, () => {
+      startAutoMicListening();
+    });
   };
 
   // Start Call Handler
   const handleStartCall = async () => {
     if (callStatus !== 'idle') return;
 
-    // 1. Transition UI status to "ringing"
+    // Immediately stop and cancel any residual browser robot speech
+    banglaVoice.stopSpeaking();
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    // 1. Pre-test/request microphone permission in browser
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+    } catch (micErr) {
+      console.warn('Microphone permission pre-check notice:', micErr);
+    }
+
+    // If user explicitly chooses direct browser mode
+    if (enginePreference === 'browser') {
+      setCallStatus('ringing');
+      callStatusRef.current = 'ringing';
+      setEngineNotice(null);
+      activeEngineRef.current = 'browser';
+      setActiveEngine('browser');
+
+      if (ringbackRef.current) {
+        ringbackRef.current.stop();
+      }
+      ringbackRef.current = playBangladeshiRingback();
+
+      setTimeout(() => {
+        if (callStatusRef.current === 'ringing') {
+          connectSmartVoiceAgent();
+        }
+      }, 1000);
+      return;
+    }
+
+    // --- 100% ElevenLabs Conversational AI Mode ---
+    // Automated robot voice is disabled so only ElevenLabs speaks
     setCallStatus('ringing');
+    callStatusRef.current = 'ringing';
+    setEngineNotice(null);
+    setActiveEngine('elevenlabs');
+    activeEngineRef.current = 'elevenlabs';
 
     // 2. Play realistic Bangladeshi mobile operator dual-tone ringback ("টুট...টুট...")
     if (ringbackRef.current) {
@@ -200,91 +382,109 @@ export const BanglaLiveCallWidget: React.FC<BanglaLiveCallWidgetProps> = ({
     }
     ringbackRef.current = playBangladeshiRingback();
 
+    const cleanName = fullName.trim().split(' ')[0] || '';
+
     try {
-      const cleanName = fullName.trim().split(' ')[0] || 'there';
+      const sessionConfig: any = { agentId: ELEVENLABS_AGENT_ID };
 
-      // 3. Connect ElevenLabs Conversational AI Agent
-      const session = await Conversation.startSession({
-        agentId: ELEVENLABS_AGENT_ID,
-        dynamicVariables: {
-          user_name: fullName.trim() || 'Valued Caller',
-          phone_number: getFullPhoneNumber() || '',
-          email: email.trim() || '',
-          company: website.trim() || '',
-        },
-        onConnect: ({ conversationId }) => {
-          console.log('ElevenLabs connected with session ID:', conversationId);
-          // Dual-tone ringback stops immediately upon connection
-          if (ringbackRef.current) {
-            ringbackRef.current.stop();
-            ringbackRef.current = null;
-          }
-          setCallStatus('connected');
-          banglaVoice.playConnectedChime();
+      sessionConfig.dynamicVariables = {
+        user_name: fullName.trim() || 'Valued Caller',
+        phone_number: getFullPhoneNumber() || '',
+        email: email.trim() || '',
+        company: website.trim() || '',
+      };
 
-          const greetingText = `Hello ${cleanName}! Thank you for calling Client Care AI. My name is ${selectedVoice.name}. How can I assist your business with customer support and sales automation today?`;
-          setTranscript((prev) =>
-            prev.length === 0
-              ? [
-                  {
-                    id: `msg_${Date.now()}`,
-                    speaker: 'ai' as const,
-                    text: greetingText,
-                    time: '00:01',
-                  },
-                ]
-              : prev
-          );
-        },
-        onDisconnect: (details) => {
-          console.log('ElevenLabs disconnected:', details);
-          // Ringback stops on disconnect so it never gets stuck
-          if (ringbackRef.current) {
-            ringbackRef.current.stop();
-            ringbackRef.current = null;
-          }
-          elevenLabsSessionRef.current = null;
+      sessionConfig.onConnect = ({ conversationId }: { conversationId: string }) => {
+        console.log('ElevenLabs connected with session ID:', conversationId);
+
+        // Ensure browser robot speech is strictly muted so only ElevenLabs speaks
+        banglaVoice.stopSpeaking();
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+
+        if (ringbackRef.current) {
+          ringbackRef.current.stop();
+          ringbackRef.current = null;
+        }
+        setActiveEngine('elevenlabs');
+        activeEngineRef.current = 'elevenlabs';
+        setCallStatus('connected');
+        callStatusRef.current = 'connected';
+        banglaVoice.playConnectedChime();
+
+        const greetingText = cleanName
+          ? `আসসালামু আলাইকুম ${cleanName}! আমি সারাহ বলছি, Client Care থেকে। অনুগ্রহ করে জানাবেন আপনাকে কিভাবে সহযোগিতা করতে পারি?`
+          : FIRST_AGENT_MESSAGE;
+
+        setTranscript((prev) =>
+          prev.length === 0
+            ? [
+                {
+                  id: `msg_${Date.now()}`,
+                  speaker: 'ai' as const,
+                  text: greetingText,
+                  time: '00:01',
+                },
+              ]
+            : prev
+        );
+      };
+
+      sessionConfig.onDisconnect = (details: any) => {
+        console.debug('ElevenLabs disconnected:', details);
+        if (callStatusRef.current === 'connected' || callStatusRef.current === 'ringing') {
           handleEndCall();
-        },
-        onError: (message, context) => {
-          console.error('ElevenLabs session error:', message, context);
-          // Ringback stops on error so it never gets stuck
+        }
+      };
+
+      sessionConfig.onError = (message: any, context: any) => {
+        console.warn('ElevenLabs session info:', message, context);
+        if (callStatusRef.current === 'ringing') {
           if (ringbackRef.current) {
             ringbackRef.current.stop();
             ringbackRef.current = null;
           }
-          elevenLabsSessionRef.current = null;
           setCallStatus('idle');
-        },
-        onMessage: (payload) => {
-          if (payload && payload.message) {
-            const role = payload.source === 'user' || payload.role === 'user' ? 'user' : 'ai';
-            setTranscript((prev) => [
-              ...prev,
-              {
-                id: `msg_${Date.now()}_${Math.random()}`,
-                speaker: role,
-                text: payload.message,
-                time: formatTime(callDuration),
-              },
-            ]);
-          }
-        },
-        onModeChange: ({ mode }) => {
-          setIsSpeaking(mode === 'speaking');
-          setIsListeningMic(mode === 'listening');
-        },
-      });
+          callStatusRef.current = 'idle';
+          setEngineNotice('ElevenLabs সংযোগ পাওয়া যায়নি। অনুগ্রহ করে পুনরায় কল করুন।');
+        }
+      };
 
+      sessionConfig.onMessage = (payload: any) => {
+        if (payload && payload.message) {
+          const role = payload.source === 'user' || payload.role === 'user' ? 'user' : 'ai';
+          setTranscript((prev) => [
+            ...prev,
+            {
+              id: `msg_${Date.now()}_${Math.random()}`,
+              speaker: role,
+              text: payload.message,
+              time: formatTime(callDurationRef.current),
+            },
+          ]);
+        }
+      };
+
+      sessionConfig.onModeChange = ({ mode }: { mode: string }) => {
+        setIsSpeaking(mode === 'speaking');
+        setIsListeningMic(mode === 'listening');
+      };
+
+      // Connect ElevenLabs Conversational AI Agent
+      const session = await Conversation.startSession(sessionConfig);
       elevenLabsSessionRef.current = session;
     } catch (error) {
       console.warn('ElevenLabs connection error:', error);
-      // Ringback stops immediately on error
       if (ringbackRef.current) {
         ringbackRef.current.stop();
         ringbackRef.current = null;
       }
-      setCallStatus('idle');
+      if (callStatusRef.current === 'ringing') {
+        setCallStatus('idle');
+        callStatusRef.current = 'idle';
+        setEngineNotice('ElevenLabs সংযোগে ত্রুটি হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
+      }
     }
   };
 
@@ -296,14 +496,18 @@ export const BanglaLiveCallWidget: React.FC<BanglaLiveCallWidgetProps> = ({
       ringbackRef.current = null;
     }
 
+    setCallStatus('idle');
+    callStatusRef.current = 'idle';
+
     // 2. Terminate active ElevenLabs conversation session
     if (elevenLabsSessionRef.current) {
       try {
-        await elevenLabsSessionRef.current.endSession();
+        const session = elevenLabsSessionRef.current;
+        elevenLabsSessionRef.current = null;
+        await session.endSession();
       } catch (err) {
         console.debug('Error closing ElevenLabs session:', err);
       }
-      elevenLabsSessionRef.current = null;
     }
 
     banglaVoice.stopSpeaking();
@@ -345,48 +549,71 @@ export const BanglaLiveCallWidget: React.FC<BanglaLiveCallWidgetProps> = ({
     setInterimSpokenText('');
     setMicAudioLevel(0);
     setMicFrequencyData(undefined);
+    setEngineNotice(null);
     if (onCallEnded) onCallEnded();
   };
 
   // User sends text or spoken question
-  const handleUserMessage = (messageText?: string) => {
+  const handleUserMessage = async (messageText?: string) => {
     const text = (messageText || customInputText).trim();
     if (!text || callStatus !== 'connected') return;
 
+    // Barge-in: immediately silence AI
     banglaVoice.stopSpeaking();
+    voiceFoundation.stopListening();
+    setIsListeningMic(false);
+    setInterimSpokenText('');
 
     const newTime = formatTime(callDuration);
     const userMsgId = `user_${Date.now()}`;
-    const updatedTranscript = [
-      ...transcript,
+    setTranscript((prev) => [
+      ...prev,
       { id: userMsgId, speaker: 'user' as const, text, time: newTime },
-    ];
-    setTranscript(updatedTranscript);
+    ]);
     setCustomInputText('');
 
-    // If ElevenLabs session is active, forward text input to conversational agent
-    if (elevenLabsSessionRef.current) {
-      try {
-        elevenLabsSessionRef.current.sendUserMessage(text);
-        return;
-      } catch (e) {
-        console.debug('Forwarded message to ElevenLabs:', e);
+    // If ElevenLabs session is active, forward text input to conversational agent only
+    if (activeEngine === 'elevenlabs' || activeEngineRef.current === 'elevenlabs') {
+      if (elevenLabsSessionRef.current) {
+        try {
+          elevenLabsSessionRef.current.sendUserMessage(text);
+        } catch (e) {
+          console.debug('Forwarded message to ElevenLabs:', e);
+        }
       }
+      return;
     }
 
-    // Fallback contextual AI response
-    const cleanName = fullName.split(' ')[0] || 'Friend';
-    const aiAnswer = getBanglaAIResponse(text, cleanName, selectedVoice.id);
+    // Built-in / Fallback AI response
+    setIsProcessingAI(true);
+    let aiAnswer = '';
+    const cleanName = fullName.split(' ')[0] || '';
 
-    setTimeout(() => {
-      const aiTime = formatTime(callDuration + 1);
-      const aiMsgId = `ai_${Date.now()}`;
-      setTranscript((prev) => [
-        ...prev,
-        { id: aiMsgId, speaker: 'ai' as const, text: aiAnswer, time: aiTime },
-      ]);
-      speakAI(aiAnswer);
-    }, 550);
+    try {
+      // Call backend Gemini AI customer service agent
+      aiAnswer = await sendAIChatMessage(text);
+    } catch (err: any) {
+      console.warn('Backend AI chat notice, using local knowledge base response:', err);
+      aiAnswer = getBanglaAIResponse(text, cleanName || 'Customer', selectedVoice.id);
+    } finally {
+      setIsProcessingAI(false);
+    }
+
+    if (!aiAnswer) {
+      aiAnswer = getBanglaAIResponse(text, cleanName || 'Customer', selectedVoice.id);
+    }
+
+    const aiTime = formatTime(callDuration + 1);
+    const aiMsgId = `ai_${Date.now()}`;
+    setTranscript((prev) => [
+      ...prev,
+      { id: aiMsgId, speaker: 'ai' as const, text: aiAnswer, time: aiTime },
+    ]);
+
+    // Speak response and automatically start listening for follow-up
+    speakAI(aiAnswer, () => {
+      startAutoMicListening();
+    });
   };
 
   // Browser Speech Recognition & Mic toggle
@@ -426,7 +653,7 @@ export const BanglaLiveCallWidget: React.FC<BanglaLiveCallWidgetProps> = ({
     });
 
     const started = voiceFoundation.startListening({
-      lang: 'en-US',
+      lang: 'bn-BD',
       interimResults: true,
       onStart: () => {
         setIsListeningMic(true);
@@ -462,12 +689,12 @@ export const BanglaLiveCallWidget: React.FC<BanglaLiveCallWidgetProps> = ({
     }
   };
 
-  // Quick Prompt Chips in English
+  // Quick Prompt Chips in Bangla & English
   const quickPrompts = [
-    { label: 'Pricing & Plans', text: 'What are your pricing plans and features?' },
-    { label: 'CRM Integration', text: 'How does Client Care handle lead capture and CRM workflows?' },
-    { label: 'Multi-Channel Support', text: 'Does this handle incoming phone calls, website chat, and social messaging?' },
-    { label: 'Schedule a Demo', text: 'I would like to schedule a live demo consultation.' },
+    { label: '💰 প্রাইসিং ও প্যাকেজ', text: 'আপনাদের প্যাকেজের খরচ এবং ফিচারগুলো কেমন?' },
+    { label: '📦 অর্ডার কনফার্মেশন', text: 'ফেসবুক পেজ ও ওয়েবসাইটে কীভাবে অটো অর্ডার কনফার্ম করে?' },
+    { label: '📞 ভয়েস কল সাপোর্ট', text: 'কাস্টমারদের ফোন কল কি এআই সরাসরি রিসিভ করতে পারে?' },
+    { label: '🚀 ফ্রি ডেমো বুকিং', text: 'আমি একটি লাইভ ডেমো মিটিং করতে চাই।' },
   ];
 
   return (
@@ -534,6 +761,68 @@ export const BanglaLiveCallWidget: React.FC<BanglaLiveCallWidgetProps> = ({
           )}
         </div>
       </div>
+
+      {/* Engine Selection Toggle (Available when Idle) */}
+      {callStatus === 'idle' && (
+        <div className="relative z-10 flex items-center p-1 rounded-xl bg-white/[0.04] border border-white/[0.08] mb-4 text-[11px]">
+          <button
+            type="button"
+            onClick={() => setEnginePreference('auto')}
+            className={`flex-1 py-1.5 px-2 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
+              enginePreference === 'auto'
+                ? 'bg-blue-600/40 text-cyan-300 border border-cyan-500/30 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Radio className="w-3 h-3" />
+            <span>ElevenLabs Auto</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setEnginePreference('browser')}
+            className={`flex-1 py-1.5 px-2 rounded-lg font-medium transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
+              enginePreference === 'browser'
+                ? 'bg-purple-600/40 text-purple-200 border border-purple-500/30 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Sparkles className="w-3 h-3 text-purple-400" />
+            <span>⚡ Smart Bangla Direct</span>
+          </button>
+        </div>
+      )}
+
+      {/* Notice Banner */}
+      {engineNotice && (
+        <div className="relative z-10 mb-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-200 flex items-start gap-2.5 animate-in fade-in duration-300">
+          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="flex-1 leading-relaxed">
+            <p className="font-semibold text-amber-300">{engineNotice}</p>
+          </div>
+          <button
+            onClick={() => setEngineNotice(null)}
+            className="text-amber-400/60 hover:text-amber-300 text-xs px-1 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Active Engine Badge during Connected Call */}
+      {callStatus === 'connected' && (
+        <div className="relative z-10 flex flex-wrap items-center justify-center gap-2 mb-2">
+          <span className="text-[10px] px-2.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/25 text-cyan-300 font-medium flex items-center gap-1.5">
+            <Radio className="w-3 h-3 text-cyan-400 animate-pulse" />
+            {activeEngine === 'elevenlabs' ? 'ElevenLabs Voice Engine' : 'স্মার্ট বাংলা AI ভয়েস ইঞ্জিন'}
+          </span>
+          {isProcessingAI && (
+            <span className="text-[10px] px-2.5 py-1 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300 font-medium animate-pulse flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3 text-cyan-400" />
+              AI উত্তর চিন্তা করছে...
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Central AI Avatar with Responsive Concentric Waveform Rings */}
       <div className="relative flex flex-col items-center justify-center my-3">
